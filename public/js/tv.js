@@ -23,7 +23,9 @@ function init() {
     connectToRoom(code);
   }
   // Show connection URL
-  const url = window.location.hostname + ':' + window.location.port;
+  const url = window.location.port && window.location.port !== '443' && window.location.port !== '80'
+    ? window.location.hostname + ':' + window.location.port
+    : window.location.hostname;
   document.getElementById('tvUrl').textContent = url;
 }
 
