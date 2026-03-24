@@ -661,63 +661,129 @@ function renderTVPoker(state) {
 // ── TV HORSE RACING ─────────────────────────────────────────────────────
 
 let lastRacePhase = null;
+const HORSE_SILKS = ['🔴','🔵','🟡','⚫','🟢','🟣'];
 
 function renderTVHorseRacing(state) {
   const el = document.getElementById('tvHorseracingContent');
   const horses = state.horses || [];
+  const isRacing = state.phase === 'racing';
+  const isStarting = state.phase === 'starting';
 
+  // Sound triggers
   if (state.phase !== lastRacePhase) {
+    if (state.phase === 'starting') CasinoAudio.startingBell();
     if (state.phase === 'racing') CasinoAudio.gallop();
     if (state.phase === 'result') {
       CasinoAudio.raceFinish();
       const anyWin = Object.values(state.bets || {}).some(b => b.won);
-      setTimeout(() => { if (anyWin) CasinoAudio.bigWin(); }, 500);
+      setTimeout(() => { if (anyWin) CasinoAudio.bigWin(); }, 800);
     }
     lastRacePhase = state.phase;
   }
 
-  el.innerHTML = `
-    ${state.phase === 'betting' ? `
-      <div class="tv-timer" ${state.timer <= 5 ? 'style="color:var(--red)"' : ''}>${state.timer}</div>
-      <div class="tv-status">Pick your horse!</div>
-    ` : ''}
-    <div class="tv-race-track">
-      ${horses.map(h => `
-        <div class="tv-horse-lane">
-          <div class="tv-horse-info" style="color:${h.color}">
-            <div class="tv-horse-name">${h.name}</div>
-            <div class="tv-horse-odds">${h.odds}:1</div>
+  // Betting phase
+  if (state.phase === 'betting') {
+    el.innerHTML = `
+      <div class="tv-race-header">
+        <div class="tv-race-title">RACE DAY</div>
+        <div class="tv-timer" ${state.timer <= 5 ? 'style="color:var(--red)"' : ''}>${state.timer}s</div>
+      </div>
+      <div class="tv-status" style="margin-bottom:8px">Place your bets on the next race</div>
+      <div class="tv-race-card">
+        <div class="tv-race-card-header">
+          <span>HORSE</span><span>SILK</span><span>ODDS</span>
+        </div>
+        ${horses.map((h, i) => `
+          <div class="tv-race-card-row">
+            <span class="tv-rc-name" style="color:${h.color}">${h.name}</span>
+            <span class="tv-rc-silk">${HORSE_SILKS[i] || '⚪'}</span>
+            <span class="tv-rc-odds">${h.odds}:1</span>
           </div>
-          <div class="tv-track-lane">
-            <div class="tv-finish-line"></div>
-            <div class="tv-horse-marker ${state.phase === 'racing' ? 'racing' : ''}"
-              style="left:calc(${Math.min(h.position || 0, 92)}% - 18px)">🏇</div>
+        `).join('')}
+      </div>
+      ${Object.keys(state.bets || {}).length > 0 ? `
+        <div class="tv-bets-list" style="margin-top:8px">
+          ${Object.entries(state.bets).map(([pid, bet]) => {
+            const p = players.find(pl => pl.id === pid);
+            const horse = horses.find(h => h.id === bet.horseId);
+            return `<div class="tv-bet-card">
+              <div class="player-name">${p?.name || 'Player'}</div>
+              <div class="bet-info">$${bet.amount} on ${horse?.name || '?'}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      ` : ''}
+    `;
+    return;
+  }
+
+  // Starting gate / Racing / Result
+  const commentary = state.commentary || '';
+  const leaderId = state.leader;
+  const leaderHorse = horses.find(h => h.id === leaderId);
+
+  el.innerHTML = `
+    <div class="tv-race-broadcast">
+      <div class="tv-race-topbar">
+        <div class="tv-race-live">${isRacing ? '<span class="live-dot"></span> LIVE' : isStarting ? 'STARTING' : 'FINAL'}</div>
+        ${leaderHorse && isRacing ? `<div class="tv-race-leader">LEAD: <strong style="color:${leaderHorse.color}">${leaderHorse.name}</strong></div>` : ''}
+      </div>
+
+      <div class="tv-race-3d-track">
+        <div class="tv-track-surface">
+          <div class="tv-track-rail tv-track-rail-top"></div>
+          <div class="tv-track-rail tv-track-rail-bottom"></div>
+          <div class="tv-track-finish-post" ${state.phase === 'result' ? 'style="box-shadow:0 0 20px rgba(201,168,76,0.5)"' : ''}></div>
+          ${horses.map((h, i) => {
+            const pos = Math.min(h.position || 0, 95);
+            const laneY = 10 + (i * 14);
+            const isWinner = state.winner === h.id;
+            const scale = 0.8 + (pos / 100) * 0.4;
+            return `
+              <div class="tv-horse-3d ${isRacing ? 'galloping' : ''} ${isWinner && state.phase === 'result' ? 'winner-flash' : ''} ${isStarting ? 'at-gate' : ''}"
+                style="left:calc(${pos}% - 10px); top:${laneY}%; transform:scale(${scale});">
+                <div class="tv-horse-body" style="color:${h.color}">
+                  <div class="tv-jockey-silk">${HORSE_SILKS[i] || '⚪'}</div>
+                  <svg class="tv-horse-svg" viewBox="0 0 50 35" width="50" height="35">
+                    <path d="M8 28 L12 18 L15 20 L18 12 L22 10 L28 8 L35 7 L40 9 L44 8 L46 10 L44 12 L40 11 L38 13 L36 18 L38 20 L40 28 L37 28 L35 22 L30 20 L25 22 L20 28 L17 28 L20 20 L15 24 L12 28 Z"
+                      fill="${h.color}" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+                    <circle cx="44" cy="10" r="1.5" fill="#fff"/>
+                  </svg>
+                </div>
+                <div class="tv-horse-number">${i + 1}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <div class="tv-race-commentary">${commentary}</div>
+
+      ${state.phase === 'result' && state.winner ? `
+        <div class="tv-race-result-panel">
+          <div class="tv-race-winner-banner" style="border-color:${horses.find(h=>h.id===state.winner)?.color}">
+            <span class="tv-race-trophy">🏆</span>
+            <span style="color:${horses.find(h=>h.id===state.winner)?.color}">${horses.find(h=>h.id===state.winner)?.name}</span>
+            <span style="color:var(--text-secondary);font-size:14px;font-weight:400;margin-left:8px">
+              ${horses.find(h=>h.id===state.winner)?.odds}:1
+            </span>
+          </div>
+          <div class="tv-bets-list" style="margin-top:8px">
+            ${Object.entries(state.bets || {}).map(([pid, bet]) => {
+              const p = players.find(pl => pl.id === pid);
+              return `
+                <div class="tv-bet-card" style="border-color:${bet.won ? 'var(--green)' : 'var(--red)'}">
+                  <div class="player-name">${p?.name || 'Player'}</div>
+                  <div class="bet-info" style="color:${bet.won ? 'var(--green)' : 'var(--red)'}">
+                    ${bet.won ? `WON $${bet.winAmount}!` : `Lost $${bet.amount}`}
+                  </div>
+                </div>
+              `;
+            }).join('')}
           </div>
         </div>
-      `).join('')}
+      ` : ''}
     </div>
-    ${state.phase === 'result' && state.winner ? `
-      <div class="tv-race-result" style="color:${horses.find(h=>h.id===state.winner)?.color || 'var(--gold)'}">
-        🏆 ${horses.find(h=>h.id===state.winner)?.name} WINS! 🏆
-      </div>
-      <div class="tv-bets-list" style="margin-top:6px;justify-content:center">
-        ${Object.entries(state.bets || {}).map(([pid, bet]) => {
-          const p = players.find(pl => pl.id === pid);
-          return `
-            <div class="tv-bet-card" style="border-color:${bet.won ? 'var(--green)' : 'var(--red)'}">
-              <div class="player-name">${p?.name || 'Player'}</div>
-              <div class="bet-info" style="color:${bet.won ? 'var(--green)' : 'var(--red)'}">
-                ${bet.won ? `WON $${bet.winAmount}!` : `Lost $${bet.amount}`}
-              </div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-    ` : state.phase === 'racing' ? `
-      <div style="text-align:center;font-size:22px;color:var(--gold);margin-top:6px;font-weight:800">
-        AND THEY'RE OFF! 🏁
-      </div>
-    ` : ''}
   `;
 
   if (state.phase === 'result' && state.winner) showConfetti();

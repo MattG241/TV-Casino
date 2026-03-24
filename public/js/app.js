@@ -646,39 +646,52 @@ function renderHorseRacing(state) {
       `}
     `;
   } else {
+    const commentary = state.commentary || '';
+    const isRacing = state.phase === 'racing';
+    const isStarting = state.phase === 'starting';
+
     el.innerHTML = `
+      ${isStarting ? `<div class="race-starting-banner">AT THE GATE</div>` : ''}
+      ${commentary ? `<div class="race-commentary">${commentary}</div>` : ''}
+
       <div class="race-track">
-        ${horses.map(h => `
+        ${horses.map((h, i) => `
           <div class="horse-lane">
-            <div class="horse-info" style="color:${h.color}">
-              <div class="horse-name">${h.name}</div>
-              <div class="horse-odds">${h.odds}:1</div>
+            <div class="horse-info">
+              <div class="horse-number-badge" style="background:${h.color}">${i + 1}</div>
+              <div>
+                <div class="horse-name" style="color:${h.color}">${h.name}</div>
+                <div class="horse-odds">${h.odds}:1</div>
+              </div>
             </div>
-            <div class="track-lane">
+            <div class="track-lane" style="background:linear-gradient(90deg, #2a1f0f, #3d2b1a)">
               <div class="finish-line"></div>
-              <div class="horse-marker ${state.phase === 'racing' ? 'racing' : ''}"
-                style="left:calc(${Math.min(h.position, 95)}% - 12px)">🏇</div>
+              <div class="track-lane-grass"></div>
+              <div class="horse-marker ${isRacing ? 'racing' : ''} ${state.winner === h.id ? 'winner' : ''} ${isStarting ? 'at-gate' : ''}"
+                style="left:calc(${Math.min(h.position || 0, 93)}% - 10px)">
+                <svg viewBox="0 0 28 20" width="28" height="20">
+                  <path d="M4 16 L7 10 L9 11 L11 6 L14 5 L18 4 L22 4 L25 5 L27 4 L27 6 L25 7 L23 9 L22 14 L24 16 L22 16 L20 12 L16 11 L13 13 L11 16 L9 16 L12 11 L9 14 L7 16 Z"
+                    fill="${h.color}" stroke="rgba(0,0,0,0.3)" stroke-width="0.3"/>
+                  <circle cx="26" cy="5.5" r="1" fill="#fff"/>
+                </svg>
+              </div>
             </div>
           </div>
         `).join('')}
       </div>
 
       ${state.phase === 'result' ? `
-        <div style="text-align:center;margin-top:12px">
-          <div style="font-size:20px;font-weight:800;color:var(--gold)">
-            ${horses.find(h=>h.id===state.winner)?.name} wins!
+        <div class="race-result-box">
+          <div class="race-winner-name" style="color:${horses.find(h=>h.id===state.winner)?.color}">
+            🏆 ${horses.find(h=>h.id===state.winner)?.name}
           </div>
           ${myBet?.won ? `
             <div class="win-display">You won $${myBet.winAmount}!</div>
           ` : myBet ? `
-            <div style="color:var(--red);margin-top:4px">Your horse didn't win</div>
+            <div style="color:var(--red);font-size:14px;margin-top:4px">Your horse didn't place</div>
           ` : ''}
         </div>
-      ` : `
-        <div style="text-align:center;font-size:16px;color:var(--gold);margin-top:12px;font-weight:700">
-          AND THEY'RE OFF! 🏁
-        </div>
-      `}
+      ` : ''}
     `;
   }
   window._hrState = state;

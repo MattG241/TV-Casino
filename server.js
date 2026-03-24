@@ -663,57 +663,103 @@ const games = {
     race(room) {
       const gs = room.gameState;
       if (!gs) return;
-      gs.phase = 'racing';
+
+      // Starting gate phase
+      gs.phase = 'starting';
+      gs.commentary = 'The horses are at the starting gate...';
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
 
       // Clear any existing race interval
       if (room._raceInterval) clearInterval(room._raceInterval);
 
-      const interval = setInterval(() => {
-        if (room.currentGame !== 'horseracing' || !room.gameState || room.gameState !== gs) {
-          clearInterval(interval);
-          room._raceInterval = null;
-          return;
-        }
-        let finished = false;
-        for (const horse of gs.horses) {
-          const baseSpeed = 2 + Math.random() * 4;
-          const oddsBonus = (12 - horse.odds) * 0.15;
-          horse.position += baseSpeed + oddsBonus + (Math.random() * 2 - 1);
-          if (horse.position >= 100) {
-            horse.position = 100;
-            if (!finished) {
-              gs.winner = horse.id;
-              finished = true;
-            }
-          }
-        }
+      // After 2s gate opens
+      setTimeout(() => {
+        if (room.currentGame !== 'horseracing' || room.gameState !== gs) return;
+        gs.phase = 'racing';
+        gs.commentary = "AND THEY'RE OFF!";
         broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
 
-        if (finished) {
-          clearInterval(interval);
-          room._raceInterval = null;
-          gs.phase = 'result';
+        let tickCount = 0;
+        const commentaryLines = [
+          null, null, null, null, null,
+          "They're jostling for position on the inside!",
+          null, null, null, null,
+          "The pack is tightening up!",
+          null, null, null, null,
+          "Coming around the bend now!",
+          null, null, null, null,
+          "It's neck and neck at the front!",
+          null, null, null, null,
+          "Into the final stretch!",
+          null, null, null, null,
+          "The crowd is on their feet!",
+        ];
 
-          for (const [pid, bet] of Object.entries(gs.bets)) {
-            const player = room.players.find(p => p.id === pid);
-            if (!player) continue;
-            if (bet.horseId === gs.winner) {
-              const horse = gs.horses.find(h => h.id === gs.winner);
-              player.chips += bet.amount * horse.odds;
-              bet.won = true;
-              bet.winAmount = bet.amount * horse.odds;
+        const interval = setInterval(() => {
+          if (room.currentGame !== 'horseracing' || !room.gameState || room.gameState !== gs) {
+            clearInterval(interval);
+            room._raceInterval = null;
+            return;
+          }
+
+          // Find current leader
+          let leaderId = null;
+          let leaderPos = -1;
+
+          let finished = false;
+          for (const horse of gs.horses) {
+            const baseSpeed = 2 + Math.random() * 4;
+            const oddsBonus = (12 - horse.odds) * 0.15;
+            horse.position += baseSpeed + oddsBonus + (Math.random() * 2 - 1);
+            if (horse.position > leaderPos) {
+              leaderPos = horse.position;
+              leaderId = horse.id;
+            }
+            if (horse.position >= 100) {
+              horse.position = 100;
+              if (!finished) {
+                gs.winner = horse.id;
+                finished = true;
+              }
             }
           }
-          broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
-          broadcastToRoom(room, 'players:update', playerList(room));
 
-          setTimeout(() => {
-            if (room.currentGame === 'horseracing') games.horseracing.start(room);
-          }, 5000);
-        }
-      }, 100);
-      room._raceInterval = interval;
+          gs.leader = leaderId;
+
+          // Update commentary
+          if (tickCount < commentaryLines.length && commentaryLines[tickCount]) {
+            gs.commentary = commentaryLines[tickCount];
+          }
+          tickCount++;
+
+          broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
+
+          if (finished) {
+            clearInterval(interval);
+            room._raceInterval = null;
+            gs.phase = 'result';
+            const winHorse = gs.horses.find(h => h.id === gs.winner);
+            gs.commentary = `${winHorse.name} crosses the finish line!`;
+
+            for (const [pid, bet] of Object.entries(gs.bets)) {
+              const player = room.players.find(p => p.id === pid);
+              if (!player) continue;
+              if (bet.horseId === gs.winner) {
+                player.chips += bet.amount * winHorse.odds;
+                bet.won = true;
+                bet.winAmount = bet.amount * winHorse.odds;
+              }
+            }
+            broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
+            broadcastToRoom(room, 'players:update', playerList(room));
+
+            setTimeout(() => {
+              if (room.currentGame === 'horseracing') games.horseracing.start(room);
+            }, 6000);
+          }
+        }, 100);
+        room._raceInterval = interval;
+      }, 2500);
     },
   },
 };

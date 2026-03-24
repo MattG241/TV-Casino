@@ -172,20 +172,54 @@ const CasinoAudio = (() => {
       notes.forEach((f, i) => playTone(f, 0.15, 'triangle', 0.2, i * 0.08));
     },
 
-    // Horse race gallop
-    gallop() {
+    // Starting bell / siren
+    startingBell() {
       if (!enabled) return;
-      for (let i = 0; i < 20; i++) {
-        playTone(150, 0.04, 'square', 0.12, i * 0.15);
-        playTone(200, 0.03, 'square', 0.08, i * 0.15 + 0.06);
-      }
+      // Three ascending bell tones then a long ring
+      playTone(800, 0.3, 'sine', 0.25);
+      playTone(800, 0.3, 'sine', 0.25, 0.5);
+      playTone(800, 0.3, 'sine', 0.25, 1.0);
+      // Long sustained bell
+      playTone(1200, 0.8, 'sine', 0.35, 1.5);
+      playTone(1200, 0.8, 'triangle', 0.15, 1.5);
+      // Crowd roar (noise burst)
+      setTimeout(() => playNoise(1.5, 0.12), 1800);
     },
 
-    // Horse race finish
+    // Horse race gallop — continuous loop
+    gallop() {
+      if (!enabled) return;
+      this._gallopActive = true;
+      const doGallop = () => {
+        if (!this._gallopActive || !enabled) return;
+        for (let i = 0; i < 25; i++) {
+          playTone(120 + Math.random() * 60, 0.035, 'square', 0.08, i * 0.12);
+          playTone(180 + Math.random() * 40, 0.025, 'square', 0.05, i * 0.12 + 0.05);
+        }
+        setTimeout(doGallop, 3000);
+      };
+      doGallop();
+    },
+
+    stopGallop() {
+      this._gallopActive = false;
+    },
+
+    // Horse race finish — trumpet fanfare
     raceFinish() {
-      // Trumpet fanfare
-      const notes = [523, 659, 784, 1047, 784, 1047];
-      notes.forEach((f, i) => playTone(f, 0.2, 'sawtooth', 0.12, i * 0.15));
+      this._gallopActive = false;
+      if (!enabled) return;
+      // Bugle call
+      const notes = [392, 523, 659, 784, 659, 784, 1047];
+      const durs = [0.15, 0.15, 0.15, 0.3, 0.15, 0.15, 0.5];
+      let t = 0;
+      notes.forEach((f, i) => {
+        playTone(f, durs[i], 'sawtooth', 0.15, t);
+        playTone(f * 2, durs[i] * 0.5, 'sine', 0.05, t);
+        t += durs[i] + 0.05;
+      });
+      // Crowd cheer
+      setTimeout(() => playNoise(2, 0.1), 600);
     },
 
     // Poker fold

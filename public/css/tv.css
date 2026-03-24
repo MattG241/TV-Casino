@@ -716,6 +716,23 @@ html, body {
 .tv-poker-seat.winner { border-color: var(--green); box-shadow: 0 0 12px rgba(46,204,113,0.2); }
 
 /* ── TV Horse Racing ──────────────────────────────────────────────────── */
+@keyframes gallop {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-4px) rotate(-2deg); }
+  50% { transform: translateY(-1px) rotate(0deg); }
+  75% { transform: translateY(-5px) rotate(2deg); }
+}
+
+@keyframes winnerFlash {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.5) drop-shadow(0 0 8px rgba(201,168,76,0.6)); }
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 .tv-horseracing {
   width: 100%;
   display: flex;
@@ -725,65 +742,240 @@ html, body {
   height: 100%;
 }
 
-.tv-race-track {
-  background: var(--bg-card);
-  border-radius: 10px;
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  width: 95%;
-  max-width: 900px;
-}
-
-.tv-horse-lane {
+/* Race card (betting phase) */
+.tv-race-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  padding: 3px 0;
-  border-bottom: 1px solid var(--border);
+  width: 90%;
+  max-width: 700px;
+  margin-bottom: 6px;
 }
 
-.tv-horse-lane:last-child { border-bottom: none; }
-.tv-horse-info { min-width: 95px; }
-.tv-horse-name { font-size: 12px; font-weight: 700; }
-.tv-horse-odds { color: var(--text-muted); font-size: 10px; }
+.tv-race-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--gold);
+  letter-spacing: 4px;
+}
 
-.tv-track-lane {
-  flex: 1;
-  height: 28px;
-  background: var(--bg-deep);
-  border-radius: 14px;
-  position: relative;
+.tv-race-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-gold);
+  border-radius: 10px;
+  width: 90%;
+  max-width: 700px;
   overflow: hidden;
 }
 
-.tv-horse-marker {
+.tv-race-card-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: rgba(201,168,76,0.08);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+
+.tv-race-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.tv-rc-name { font-weight: 700; font-size: 14px; flex: 1; }
+.tv-rc-silk { font-size: 18px; width: 40px; text-align: center; }
+.tv-rc-odds { font-weight: 700; color: var(--gold); font-size: 14px; width: 50px; text-align: right; }
+
+/* Broadcast-style racing layout */
+.tv-race-broadcast {
+  width: 95%;
+  max-width: 950px;
+}
+
+.tv-race-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tv-race-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--red);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-size: 12px;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--red);
+  border-radius: 50%;
+  animation: livePulse 1s infinite;
+}
+
+.tv-race-leader {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* 3D Track */
+.tv-race-3d-track {
+  background: linear-gradient(180deg, #1a3a1a 0%, #2d5a2d 30%, #3a6a2a 50%, #4a7a35 70%, #2d5a2d 100%);
+  border: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  position: relative;
+  height: 280px;
+  overflow: hidden;
+  perspective: 600px;
+}
+
+.tv-track-surface {
+  position: absolute;
+  inset: 0;
+  /* Dirt track texture */
+  background:
+    repeating-linear-gradient(90deg, transparent 0px, transparent 40px, rgba(0,0,0,0.03) 40px, rgba(0,0,0,0.03) 80px),
+    linear-gradient(180deg,
+      #3d2b1a 0%, #5a4025 15%,
+      #6b4f2d 30%, #7a5c35 50%,
+      #6b4f2d 70%, #5a4025 85%,
+      #3d2b1a 100%
+    );
+}
+
+.tv-track-rail {
   position: absolute;
   left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 20px;
-  transition: left 0.1s linear;
+  right: 0;
+  height: 3px;
+  z-index: 5;
 }
 
-.tv-horse-marker.racing { animation: raceRun 0.15s infinite; }
+.tv-track-rail-top {
+  top: 4%;
+  background: linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.15));
+}
 
-.tv-finish-line {
+.tv-track-rail-bottom {
+  bottom: 4%;
+  background: linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.1));
+}
+
+.tv-track-finish-post {
   position: absolute;
-  right: 10px;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: repeating-linear-gradient(to bottom, #fff 0px, #fff 3px, transparent 3px, transparent 6px);
-  opacity: 0.2;
+  right: 5%;
+  top: 2%;
+  bottom: 2%;
+  width: 4px;
+  background: repeating-linear-gradient(to bottom, #fff 0px, #fff 6px, #000 6px, #000 12px);
+  z-index: 5;
+  box-shadow: 0 0 8px rgba(255,255,255,0.2);
 }
 
-.tv-race-result {
+/* Horse on track */
+.tv-horse-3d {
+  position: absolute;
+  transition: left 0.1s linear, transform 0.1s linear;
+  z-index: 10;
+}
+
+.tv-horse-3d.galloping {
+  animation: gallop 0.25s infinite;
+}
+
+.tv-horse-3d.at-gate {
+  opacity: 0.7;
+}
+
+.tv-horse-3d.winner-flash {
+  animation: winnerFlash 0.5s infinite;
+  z-index: 20;
+}
+
+.tv-horse-body {
+  position: relative;
+}
+
+.tv-jockey-silk {
+  position: absolute;
+  top: -6px;
+  left: 26px;
+  font-size: 10px;
+  z-index: 2;
+}
+
+.tv-horse-svg {
+  filter: drop-shadow(2px 3px 3px rgba(0,0,0,0.5));
+}
+
+.tv-horse-number {
+  position: absolute;
+  bottom: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Commentary bar */
+.tv-race-commentary {
   text-align: center;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-style: italic;
+  color: var(--gold-light);
+  padding: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  min-height: 36px;
+  margin-bottom: 8px;
+}
+
+/* Result panel */
+.tv-race-result-panel {
+  text-align: center;
+  margin-top: 4px;
+}
+
+.tv-race-winner-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 24px;
+  background: var(--bg-card);
+  border: 2px solid var(--gold);
+  border-radius: 8px;
   font-family: var(--font-display);
   font-size: 22px;
   font-weight: 900;
-  margin-top: 8px;
   animation: bounceIn 0.5s ease;
+}
+
+.tv-race-trophy {
+  font-size: 28px;
 }
 
 /* ── TV Timer & Status ────────────────────────────────────────────────── */
