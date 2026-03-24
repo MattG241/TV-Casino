@@ -240,6 +240,51 @@ const CasinoAudio = (() => {
       }
     },
 
+    // Crowd ambience — builds with race excitement
+    _crowdSource: null,
+    _crowdGain: null,
+    startCrowd() {
+      if (!enabled) return;
+      const c = getCtx();
+      // Generate crowd noise buffer (2 seconds, looped)
+      const bufferSize = c.sampleRate * 2;
+      const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        // Crowd noise — bandpassed random noise with rhythmic modulation
+        data[i] = (Math.random() * 2 - 1) * (0.5 + 0.5 * Math.sin(i / (c.sampleRate * 0.3)));
+      }
+      this._crowdSource = c.createBufferSource();
+      this._crowdSource.buffer = buffer;
+      this._crowdSource.loop = true;
+      this._crowdGain = c.createGain();
+      this._crowdGain.gain.value = 0.03; // Start quiet
+      const filter = c.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 800;
+      filter.Q.value = 0.5;
+      this._crowdSource.connect(filter);
+      filter.connect(this._crowdGain);
+      this._crowdGain.connect(sfxGain);
+      this._crowdSource.start();
+    },
+
+    setCrowdIntensity(level) {
+      // level 0-1, ramps crowd volume
+      if (this._crowdGain) {
+        const target = 0.02 + level * 0.15;
+        this._crowdGain.gain.setTargetAtTime(target, getCtx().currentTime, 0.3);
+      }
+    },
+
+    stopCrowd() {
+      if (this._crowdSource) {
+        try { this._crowdSource.stop(); } catch(e) {}
+        this._crowdSource = null;
+      }
+      this._crowdGain = null;
+    },
+
     // Horse race finish — trumpet fanfare
     raceFinish() {
       this._gallopActive = false;

@@ -676,15 +676,31 @@ function renderTVHorseRacing(state) {
 
   // Sound triggers
   if (state.phase !== lastRacePhase) {
-    if (state.phase === 'loading') CasinoAudio.startingBell(); // bugle when loading
-    if (state.phase === 'racing') CasinoAudio.gallop();
+    if (state.phase === 'loading') CasinoAudio.startingBell();
+    if (state.phase === 'racing') {
+      CasinoAudio.gallop();
+      CasinoAudio.startCrowd();
+    }
     if (state.phase === 'result') {
       CasinoAudio.stopGallop();
+      CasinoAudio.setCrowdIntensity(1.0); // Crowd roars at finish
       CasinoAudio.raceFinish();
       const anyWin = Object.values(state.bets || {}).some(b => b.won);
       setTimeout(() => { if (anyWin) CasinoAudio.bigWin(); }, 800);
+      setTimeout(() => CasinoAudio.stopCrowd(), 4000); // Crowd dies down after 4s
+    }
+    if (state.phase === 'betting') {
+      CasinoAudio.stopCrowd();
     }
     lastRacePhase = state.phase;
+  }
+
+  // Dynamic crowd intensity during race — builds as race progresses
+  if (state.phase === 'racing' && state.livePositions) {
+    const leaderPos = horses.reduce((max, h) => Math.max(max, h.position || 0), 0);
+    const intensity = Math.min(1, leaderPos / 100);
+    // Ramp up crowd noise as horses approach finish
+    CasinoAudio.setCrowdIntensity(intensity * intensity); // exponential ramp
   }
 
   // Spoken commentary
@@ -711,8 +727,7 @@ function renderTVHorseRacing(state) {
     const sorted = [...horses].sort((a, b) => a.scratched ? 1 : b.scratched ? -1 : a.odds - b.odds);
     const trackNames = ['FLEMINGTON','RANDWICK','MOONEE VALLEY','CAULFIELD','ROSEHILL','EAGLE FARM','DOOMBEN','MORPHETTVILLE','ASCOT','SANDOWN'];
     const trackName = trackNames[(state.raceNumber || 1) % trackNames.length];
-    const conditions = ['GOOD 4','SOFT 5','GOOD 3','FIRM 1','SOFT 6','HEAVY 8'];
-    const condition = conditions[Math.floor((state.raceNumber || 0) * 3.7) % conditions.length];
+    const condition = state.trackCondition || 'GOOD 4';
 
     // Build the shell ONCE — preserve the 3D canvas across updates
     if (!el.querySelector('#racePreview3d')) {
@@ -738,7 +753,8 @@ function renderTVHorseRacing(state) {
                 <span class="sky-oh-num">#</span>
                 <span class="sky-oh-name">TAB</span>
                 <span class="sky-oh-odds">WIN</span>
-                <span class="sky-oh-barrier">BARRIER</span>
+                <span class="sky-oh-style">STYLE</span>
+                <span class="sky-oh-barrier">GATE</span>
               </div>
               <div class="sky-odds-scroll" id="skyOddsScroll" style="--scroll-dist: ${sorted.length > 10 ? -(sorted.length - 10) * 30 + 'px' : '0px'}"></div>
               <div id="skyBetsStrip"></div>
@@ -790,6 +806,7 @@ function renderTVHorseRacing(state) {
             <span class="sky-or-num">${origIdx+1}</span>
             <span class="sky-or-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds.toFixed(2)}</span>
             <span class="sky-or-name" style="color:${h.color}">${h.name}</span>
+            <span class="sky-or-style">${h.styleDesc || ''}</span>
             <span class="sky-or-barrier">(${barrier})</span>
           </div>`;
       }).join('');
@@ -834,7 +851,7 @@ function renderTVHorseRacing(state) {
         <div class="sky-topbar">
           <div class="sky-status" id="skyStatus"></div>
           <div class="sky-title">TV CASINO RACING</div>
-          <div class="sky-race-info">${horses.length} RUNNERS</div>
+          <div class="sky-race-info">${state.distance || ''}m &bull; ${state.trackCondition || ''} &bull; ${horses.filter(h=>!h.scratched).length} RUNNERS</div>
         </div>
         <div class="sky-main">
           <div class="sky-track-area">
@@ -857,8 +874,12 @@ function renderTVHorseRacing(state) {
   // Update status
   const statusEl = document.getElementById('skyStatus');
   if (statusEl) {
-    statusEl.innerHTML = isRacing ? '<span class="live-dot"></span> LIVE' :
-      isLoading ? 'LOADING' : isStarting ? 'STARTING' : 'FINAL';
+    const leaderPos = Math.max(...horses.map(h => h.position || 0), 0);
+    const progressPct = Math.min(100, Math.round(leaderPos));
+    statusEl.innerHTML = isRacing ? `<span class="live-dot"></span> LIVE
+      <span class="race-progress-bar"><span class="race-progress-fill" style="width:${progressPct}%"></span></span>
+      <span class="race-progress-pct">${progressPct}%</span>` :
+      isLoading ? 'LOADING' : isStarting ? '<span class="live-dot"></span> STARTING' : 'FINAL';
   }
 
   // Update commentary
@@ -870,22 +891,32 @@ function renderTVHorseRacing(state) {
     Race3D.updateHorses(horses, state.phase);
   }
 
-  // Update sidebar
+  // Update sidebar — show live positions with margins
   const sbEl = document.getElementById('skySidebar');
   if (sbEl) {
+    const livePos = state.livePositions || [];
     sbEl.innerHTML = `
-      <div class="sky-sb-header">POS</div>
-      ${runOrder.slice(0, Math.min(10, laneCount)).map((h, pos) => {
+      <div class="sky-sb-header">${isRacing ? 'LIVE POSITIONS' : state.phase === 'result' ? 'FINAL RESULT' : 'POSITIONS'}</div>
+      ${runOrder.slice(0, Math.min(12, laneCount)).map((h, pos) => {
         const origIdx = horses.indexOf(h);
         const isWinner = state.winner === h.id;
+        const lp = livePos.find(p => p.id === h.id);
+        const margin = lp && pos > 0 ? lp.margin : null;
+        const marginText = margin !== null && margin !== undefined ? (
+          margin < 0.5 ? 'NOSE' : margin < 1.5 ? 'SH' : margin < 3 ? '1L' : margin < 6 ? `${Math.round(margin/2.5)}L` : `${Math.round(margin/2.5)}L`
+        ) : '';
+        const isSecond = state.phase === 'result' && state.places && state.places[1] === h.id;
+        const isThird = state.phase === 'result' && state.places && state.places[2] === h.id;
         return `
-        <div class="sky-runner ${isWinner ? 'sky-runner-winner' : ''} ${pos === 0 && isRacing ? 'sky-runner-lead' : ''}">
+        <div class="sky-runner ${isWinner ? 'sky-runner-winner' : ''} ${isSecond ? 'sky-runner-second' : ''} ${isThird ? 'sky-runner-third' : ''} ${pos === 0 && isRacing ? 'sky-runner-lead' : ''}">
+          <span class="sky-r-pos">${pos + 1}</span>
           <span class="sky-r-silk" style="background:${h.color}">${origIdx+1}</span>
           <span class="sky-r-name">${h.name.length > 14 ? h.name.substring(0,12)+'..' : h.name}</span>
+          ${marginText && pos > 0 ? `<span class="sky-r-margin">${marginText}</span>` : ''}
           <span class="sky-r-odds">$${(h.lockedOdds||h.odds).toFixed(2)}</span>
         </div>`;
       }).join('')}
-      ${laneCount > 10 ? `<div class="sky-runner" style="opacity:0.5;justify-content:center;font-size:10px">+${laneCount-10} more</div>` : ''}
+      ${laneCount > 12 ? `<div class="sky-runner" style="opacity:0.5;justify-content:center;font-size:10px">+${laneCount-12} more</div>` : ''}
     `;
   }
 
@@ -895,6 +926,8 @@ function renderTVHorseRacing(state) {
     if (state.phase === 'result' && state.winner) {
       const winHorse = horses.find(h=>h.id===state.winner);
       const winIdx = horses.indexOf(winHorse);
+      const margins = state.margins || [];
+      const marginDesc = (m) => !m ? '' : m < 0.5 ? 'NOSE' : m < 1.5 ? 'SH' : m < 3 ? '1L' : `${Math.round(m/2.5)}L`;
       resultEl.innerHTML = `
         <div class="sky-result-bar">
           <span class="sky-result-pos">1ST</span>
@@ -905,9 +938,11 @@ function renderTVHorseRacing(state) {
             <span class="sky-result-sep">|</span>
             <span class="sky-result-pos" style="background:#888">2ND</span>
             <span class="sky-result-name" style="font-size:12px">${horses.find(h=>h.id===state.places[1])?.name}</span>
+            <span class="sky-result-margin">${marginDesc(margins[1])}</span>
             <span class="sky-result-sep">|</span>
             <span class="sky-result-pos" style="background:#a0522d">3RD</span>
             <span class="sky-result-name" style="font-size:12px">${horses.find(h=>h.id===state.places[2])?.name}</span>
+            <span class="sky-result-margin">${marginDesc(margins[2])}</span>
           ` : ''}
         </div>
         <div class="tv-bets-list" style="margin-top:4px;justify-content:center">

@@ -73,6 +73,160 @@ const Race3D = (() => {
     };
   }
 
+  // ── Grandstand along home straight ────────────────────────────────────
+  function addGrandstand() {
+    const standGroup = new THREE.Group();
+    const standMat = new THREE.MeshLambertMaterial({ color: 0x888899 });
+    const seatMat = new THREE.MeshLambertMaterial({ color: 0x445577 });
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0x334455 });
+
+    // Main structure — along the home straight outside rail
+    const standLen = STRAIGHT * 0.8;
+    const standDepth = 12;
+    const standHeight = 10;
+    const standOffset = TRACK_W / 2 + 6;
+
+    // Base platform
+    const base = new THREE.Mesh(
+      new THREE.BoxGeometry(standLen, 1, standDepth),
+      standMat
+    );
+    base.position.set(0, 0.5, RADIUS + standOffset);
+    base.receiveShadow = true;
+    standGroup.add(base);
+
+    // Tiered seating (3 rows)
+    for (let row = 0; row < 3; row++) {
+      const rowMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(standLen - 2, 2, standDepth / 3 - 0.5),
+        seatMat
+      );
+      rowMesh.position.set(0, 1.5 + row * 2.2, RADIUS + standOffset + (row - 1) * (standDepth / 3));
+      rowMesh.castShadow = true;
+      standGroup.add(rowMesh);
+    }
+
+    // Roof
+    const roof = new THREE.Mesh(
+      new THREE.BoxGeometry(standLen + 4, 0.3, standDepth + 4),
+      roofMat
+    );
+    roof.position.set(0, standHeight, RADIUS + standOffset);
+    roof.castShadow = true;
+    standGroup.add(roof);
+
+    // Roof support pillars
+    for (let px = -standLen / 2 + 3; px <= standLen / 2 - 3; px += 12) {
+      const pillar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.25, 0.25, standHeight),
+        standMat
+      );
+      pillar.position.set(px, standHeight / 2, RADIUS + standOffset - standDepth / 2 + 1);
+      pillar.castShadow = true;
+      standGroup.add(pillar);
+    }
+
+    // Crowd — small colored spheres on seats
+    const crowdColors = [0xcc3333, 0x3333cc, 0xffcc33, 0x33cc33, 0xff6699, 0x9933ff, 0xff8833, 0x33cccc];
+    for (let row = 0; row < 3; row++) {
+      for (let seat = -standLen / 2 + 2; seat < standLen / 2 - 2; seat += 1.2) {
+        if (Math.random() > 0.7) continue; // some empty seats
+        const person = new THREE.Mesh(
+          new THREE.SphereGeometry(0.3, 4, 4),
+          new THREE.MeshLambertMaterial({ color: crowdColors[Math.floor(Math.random() * crowdColors.length)] })
+        );
+        person.position.set(
+          seat + (Math.random() - 0.5) * 0.4,
+          2.8 + row * 2.2,
+          RADIUS + standOffset + (row - 1) * (standDepth / 3) + (Math.random() - 0.5) * 1.5
+        );
+        standGroup.add(person);
+      }
+    }
+
+    scene.add(standGroup);
+  }
+
+  // ── Distance markers along the track ────────────────────────────────────
+  function addDistanceMarkers() {
+    const totalPerimeter = 2 * STRAIGHT + 2 * Math.PI * RADIUS;
+    // Place markers at intervals along the outside rail
+    for (let i = 1; i <= 6; i++) {
+      const t = (i / 7);
+      const markerPos = getTrackPos(t, TRACK_W / 2 + 2);
+      const markerPost = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 2.5),
+        new THREE.MeshLambertMaterial({ color: 0xeeeeee })
+      );
+      markerPost.position.set(markerPos.x, 1.25, markerPos.z);
+      scene.add(markerPost);
+
+      // Small marker board
+      const board = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.2, 0.6),
+        new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x2266aa : 0xaa2222, side: THREE.DoubleSide })
+      );
+      board.position.set(markerPos.x, 2.6, markerPos.z);
+      board.lookAt(0, 2.6, 0);
+      scene.add(board);
+    }
+  }
+
+  // ── Dust particles ──────────────────────────────────────────────────────
+  let dustParticles = null;
+  let dustPositions = null;
+  let dustVelocities = null;
+  const DUST_COUNT = 60;
+
+  function initDust() {
+    if (dustParticles) scene.remove(dustParticles);
+    const geo = new THREE.BufferGeometry();
+    dustPositions = new Float32Array(DUST_COUNT * 3);
+    dustVelocities = new Float32Array(DUST_COUNT * 3);
+    for (let i = 0; i < DUST_COUNT; i++) {
+      dustPositions[i * 3] = 0;
+      dustPositions[i * 3 + 1] = -10; // hidden below ground
+      dustPositions[i * 3 + 2] = 0;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+    const mat = new THREE.PointsMaterial({ color: 0xccaa77, size: 0.6, transparent: true, opacity: 0.5 });
+    dustParticles = new THREE.Points(geo, mat);
+    scene.add(dustParticles);
+  }
+
+  function updateDust(horsesData, phase) {
+    if (!dustParticles || !dustPositions) return;
+    const isGalloping = phase === 'racing';
+
+    for (let i = 0; i < DUST_COUNT; i++) {
+      if (isGalloping && Math.random() < 0.15 && horsesData.length > 0) {
+        // Spawn dust near a random horse
+        const hi = Math.floor(Math.random() * horses3d.length);
+        const h = horses3d[hi];
+        if (h && h.visible) {
+          dustPositions[i * 3] = h.position.x + (Math.random() - 0.5) * 2;
+          dustPositions[i * 3 + 1] = 0.3 + Math.random() * 0.5;
+          dustPositions[i * 3 + 2] = h.position.z + (Math.random() - 0.5) * 2;
+          dustVelocities[i * 3] = (Math.random() - 0.5) * 0.1;
+          dustVelocities[i * 3 + 1] = Math.random() * 0.05;
+          dustVelocities[i * 3 + 2] = (Math.random() - 0.5) * 0.1;
+        }
+      }
+      // Animate existing dust
+      dustPositions[i * 3] += dustVelocities[i * 3] || 0;
+      dustPositions[i * 3 + 1] += dustVelocities[i * 3 + 1] || 0;
+      dustPositions[i * 3 + 2] += dustVelocities[i * 3 + 2] || 0;
+      // Fade out by moving down
+      if (dustPositions[i * 3 + 1] > 0) {
+        dustVelocities[i * 3 + 1] -= 0.002;
+      }
+      if (dustPositions[i * 3 + 1] < 0) {
+        dustPositions[i * 3 + 1] = -10;
+      }
+    }
+    dustParticles.geometry.attributes.position.needsUpdate = true;
+  }
+
   // ── Load the GLB horse model ───────────────────────────────────────────
   function loadHorseModel() {
     return new Promise((resolve) => {
@@ -172,17 +326,30 @@ const Race3D = (() => {
     post.position.set(fp.x, 3.5, fp.z);
     scene.add(post);
 
-    // Checkered finish
-    for (let j = 0; j < 8; j++) {
-      const lanePos = -TRACK_W / 2 + (j + 0.5) * (TRACK_W / 8);
-      const p = getTrackPos(0, lanePos);
-      const sq = new THREE.Mesh(
-        new THREE.PlaneGeometry(1, TRACK_W / 8),
-        new THREE.MeshBasicMaterial({ color: j % 2 === 0 ? 0xffffff : 0x111111 })
-      );
-      sq.rotation.x = -Math.PI / 2;
-      sq.position.set(p.x, 0.02, p.z);
-      scene.add(sq);
+    // Finish post inner side too
+    const fp2 = getTrackPos(0, -TRACK_W / 2 - 1.5);
+    const post2 = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.12, 7),
+      new THREE.MeshLambertMaterial({ color: 0xffffff })
+    );
+    post2.position.set(fp2.x, 3.5, fp2.z);
+    scene.add(post2);
+
+    // Checkered finish — two rows of alternating tiles
+    for (let row = 0; row < 2; row++) {
+      for (let j = 0; j < 10; j++) {
+        const lanePos = -TRACK_W / 2 + (j + 0.5) * (TRACK_W / 10);
+        const tOff = row * 0.002;
+        const p = getTrackPos(tOff, lanePos);
+        const isWhite = (j + row) % 2 === 0;
+        const sq = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.2, TRACK_W / 10),
+          new THREE.MeshBasicMaterial({ color: isWhite ? 0xffffff : 0x111111 })
+        );
+        sq.rotation.x = -Math.PI / 2;
+        sq.position.set(p.x, 0.02, p.z);
+        scene.add(sq);
+      }
     }
 
     // Starting gate
@@ -207,8 +374,17 @@ const Race3D = (() => {
     gateGroup.add(beam);
     scene.add(gateGroup);
 
+    // ── Grandstand along home straight (outside rail) ──
+    addGrandstand();
+
+    // ── Distance markers every ~200m ──
+    addDistanceMarkers();
+
     initialized = true;
     frameCount = 0;
+
+    // Init dust particles
+    initDust();
 
     // Load GLB model async — will upgrade horses once ready
     loadHorseModel();
@@ -498,6 +674,9 @@ const Race3D = (() => {
       setAnimSpeed(h3d, isRacing ? 6 : 2); // full gallop vs slow trot
     });
 
+    // ── Update dust particles ──
+    updateDust(horsesData, phase);
+
     // ── CAMERA ──
     if (phase === 'betting') {
       const midIdx = Math.floor(horsesData.length / 2);
@@ -525,12 +704,45 @@ const Race3D = (() => {
       const leadH = horses3d[leadIdx];
       if (leadH) {
         const tNorm = ((leadH._trackT % 1) + 1) % 1;
-        const behindT = ((tNorm - 0.06) % 1 + 1) % 1;
-        const camPos = getTrackPos(behindT, TRACK_W + 12);
-        const lookPos = getTrackPos(((tNorm + 0.03) % 1 + 1) % 1, 0);
-        camera.position.x += (camPos.x - camera.position.x) * 0.06;
-        camera.position.z += (camPos.z - camera.position.z) * 0.06;
-        camera.position.y += (15 - camera.position.y) * 0.05;
+        const leaderProgress = horsesData[leadIdx]?.position || 0;
+
+        // Dynamic camera angles based on race progress
+        let camHeight, camDist, lerpFactor, camLaneOffset;
+
+        if (leaderProgress < 20) {
+          // Early: wide aerial shot showing the field
+          camHeight = 22;
+          camDist = 0.08;
+          camLaneOffset = TRACK_W + 18;
+          lerpFactor = 0.04;
+        } else if (leaderProgress > 85) {
+          // Final stretch: low dramatic angle close to track
+          camHeight = 6;
+          camDist = 0.04;
+          camLaneOffset = TRACK_W / 2 + 8;
+          lerpFactor = 0.08;
+        } else if (leaderProgress > 60 && leaderProgress < 80) {
+          // Final turn: elevated wide shot
+          camHeight = 18;
+          camDist = 0.07;
+          camLaneOffset = TRACK_W + 15;
+          lerpFactor = 0.05;
+        } else {
+          // Default: medium tracking shot
+          camHeight = 13;
+          camDist = 0.06;
+          camLaneOffset = TRACK_W + 12;
+          lerpFactor = 0.06;
+        }
+
+        const behindT = ((tNorm - camDist) % 1 + 1) % 1;
+        const camPos = getTrackPos(behindT, camLaneOffset);
+        const lookAheadT = ((tNorm + 0.03) % 1 + 1) % 1;
+        const lookPos = getTrackPos(lookAheadT, 0);
+
+        camera.position.x += (camPos.x - camera.position.x) * lerpFactor;
+        camera.position.z += (camPos.z - camera.position.z) * lerpFactor;
+        camera.position.y += (camHeight - camera.position.y) * lerpFactor;
         camera.lookAt(lookPos.x, 1, lookPos.z);
       }
     }

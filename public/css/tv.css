@@ -864,7 +864,8 @@ html, body {
 .sky-oh-num { width: 28px; }
 .sky-oh-name { width: 50px; text-align: center; }
 .sky-oh-odds { flex: 1; padding-left: 8px; }
-.sky-oh-barrier { width: 55px; text-align: center; }
+.sky-oh-style { width: 55px; text-align: center; }
+.sky-oh-barrier { width: 45px; text-align: center; }
 
 @keyframes skyScroll {
   0%, 12% { transform: translateY(0); }
@@ -923,8 +924,17 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.sky-or-style {
+  font-size: 9px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 55px;
+  text-align: center;
+}
+
 .sky-or-barrier {
-  width: 55px;
+  width: 45px;
   text-align: center;
   color: #888;
   font-size: 12px;
@@ -1031,6 +1041,32 @@ html, body {
   letter-spacing: 2px;
 }
 
+.race-progress-bar {
+  display: inline-block;
+  width: 80px;
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+.race-progress-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--gold));
+  border-radius: 3px;
+  transition: width 0.2s linear;
+}
+
+.race-progress-pct {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
 .sky-race-info { font-size: 11px; color: var(--text-muted); font-weight: 600; }
 
 .sky-main { display: flex; border: 1px solid var(--border); border-top: none; }
@@ -1114,11 +1150,46 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.sky-r-pos {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 900;
+  color: #fff;
+  background: rgba(255,255,255,0.15);
+  flex-shrink: 0;
+}
+
+.sky-runner-lead .sky-r-pos { background: var(--gold); color: #000; }
+.sky-runner-winner .sky-r-pos { background: var(--green); }
+.sky-runner-second { background: rgba(200,200,200,0.08); }
+.sky-runner-third { background: rgba(160,82,45,0.08); }
+.sky-runner-second .sky-r-pos { background: #888; }
+.sky-runner-third .sky-r-pos { background: #a0522d; }
+
+.sky-r-margin {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-weight: 600;
+  min-width: 24px;
+  text-align: right;
+}
+
 .sky-r-odds {
   font-weight: 700;
   color: var(--gold);
   font-variant-numeric: tabular-nums;
   font-size: 12px;
+}
+
+.sky-result-margin {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 /* Result bar */

@@ -668,9 +668,15 @@ function renderHorseRacing(state) {
 
   if (state.phase === 'betting') {
     el.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <span style="font-family:var(--font-display);font-weight:700;color:var(--gold)">Race ${state.raceNumber || ''} — ${state.distance || ''}m</span>
-        <span style="font-size:12px;color:var(--text-muted)">${horses.filter(h=>!h.scratched).length} runners</span>
+      <div class="race-header-info">
+        <div class="race-header-left">
+          <span class="race-num-badge">R${state.raceNumber || ''}</span>
+          <span class="race-dist">${state.distance || ''}m</span>
+        </div>
+        <div class="race-header-right">
+          <span class="race-condition">${state.trackCondition || ''}</span>
+          <span class="race-runners">${horses.filter(h=>!h.scratched).length} runners</span>
+        </div>
       </div>
       <div class="timer-bar"><div class="timer-fill" style="width:${(state.timer/25)*100}%"></div></div>
       <div class="timer-text">${state.timer}s to place bets</div>
@@ -686,7 +692,10 @@ function renderHorseRacing(state) {
             onclick="hrSelectedHorse=${h.id}; renderHorseRacing(window._hrState)"
             style="border-left: 4px solid ${h.color}">
             <div class="horse-select-name">${h.name}</div>
-            <div class="horse-select-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">$${h.odds.toFixed(2)}</div>
+            <div class="horse-select-meta">
+              <span class="horse-select-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">$${h.odds.toFixed(2)}</span>
+              <span class="horse-style-tag">${h.styleDesc || ''}</span>
+            </div>
           </div>`;
         }).join('')}
       </div>
@@ -749,11 +758,37 @@ function renderHorseRacing(state) {
         `).join('')}
       </div>
 
+      ${state.livePositions && isRacing ? `
+        <div class="live-positions-bar">
+          ${state.livePositions.slice(0, 5).map((lp, i) => {
+            const h = horses.find(hh => hh.id === lp.id);
+            if (!h) return '';
+            const isMyHorse = myBet && myBet.horseId === h.id;
+            return `<span class="live-pos-entry ${isMyHorse ? 'my-horse' : ''}">
+              <span class="live-pos-num">${i+1}</span>
+              <span class="live-pos-silk" style="background:${h.color}"></span>
+              <span class="live-pos-name">${h.name.split(' ')[1] || h.name}</span>
+              ${lp.margin > 0 ? `<span class="live-pos-margin">${lp.margin < 1 ? 'NK' : lp.margin < 3 ? '1L' : Math.round(lp.margin/2.5)+'L'}</span>` : ''}
+            </span>`;
+          }).join('')}
+        </div>
+      ` : ''}
+
       ${state.phase === 'result' ? `
         <div class="race-result-box">
           <div class="race-winner-name" style="color:${horses.find(h=>h.id===state.winner)?.color}">
             🏆 ${horses.find(h=>h.id===state.winner)?.name}
           </div>
+          ${state.places ? `
+            <div class="race-places">
+              ${state.places.slice(0, 3).map((pid, i) => {
+                const ph = horses.find(hh => hh.id === pid);
+                const labels = ['1ST', '2ND', '3RD'];
+                const colors = ['var(--gold)', '#aaa', '#a0522d'];
+                return `<span class="race-place-entry"><span class="race-place-label" style="color:${colors[i]}">${labels[i]}</span> ${ph?.name || ''}</span>`;
+              }).join('')}
+            </div>
+          ` : ''}
           ${myBet?.won ? `
             <div class="win-display">You won $${myBet.winAmount}!</div>
           ` : myBet ? `

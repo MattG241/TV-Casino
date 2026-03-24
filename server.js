@@ -750,6 +750,15 @@ const games = {
 
   // ── HORSE RACING ──
   horseracing: {
+    // Running style definitions: how each style behaves at different race stages
+    _STYLES: {
+      frontRunner:  { early: 1.25, mid: 1.05, late: 0.82, desc: 'Front Runner' },
+      stalker:      { early: 1.05, mid: 1.15, late: 1.00, desc: 'Stalker' },
+      midPack:      { early: 0.95, mid: 1.10, late: 1.10, desc: 'Mid-Pack' },
+      closer:       { early: 0.80, mid: 0.95, late: 1.35, desc: 'Closer' },
+      onePace:      { early: 1.00, mid: 1.00, late: 1.00, desc: 'One Pacer' },
+    },
+
     start(room) {
       if (room.currentGame !== 'horseracing') return;
       const ALL_COLORS = ['#c0392b','#2980b9','#d4a843','#1a1a2e','#27ae60','#8e44ad','#e67e22','#16a085','#e84393','#636e72','#fdcb6e','#00b894','#6c5ce7','#d63031','#0984e3','#a29bfe'];
@@ -764,23 +773,53 @@ const games = {
       if (!room._raceNumber) room._raceNumber = 0;
       room._raceNumber++;
 
-      const horses = colors.map((color, i) => ({
-        id: i + 1,
-        name: generateHorseName(usedNames),
-        color,
-        baseOdds: baseOdds[i],
-        odds: baseOdds[i],
-        position: 0,
-        gateLoaded: false,
-        scratched: false,
-      }));
-      // Real-ish race duration scaling (compressed to ~15-50s game time)
-      // Real: 1000m=57s, 1200m=70s, 1600m=95s, 2000m=120s, 2400m=145s, 3200m=195s
-      // Game: divide by ~4 so 1000m≈15s, 1600m≈24s, 2400m≈36s, 3200m≈50s
+      // Assign running styles weighted by odds (favourites more likely frontrunner/stalker)
+      const styleKeys = Object.keys(this._STYLES);
+      const horses = colors.map((color, i) => {
+        let style;
+        if (baseOdds[i] < 5) {
+          // Favourites: frontRunner or stalker
+          style = styleKeys[Math.floor(Math.random() * 2)];
+        } else if (baseOdds[i] < 10) {
+          // Mid-range: any style
+          style = styleKeys[Math.floor(Math.random() * styleKeys.length)];
+        } else {
+          // Longshots: more likely closer or midPack
+          style = ['closer', 'midPack', 'onePace'][Math.floor(Math.random() * 3)];
+        }
+        return {
+          id: i + 1,
+          name: generateHorseName(usedNames),
+          color,
+          baseOdds: baseOdds[i],
+          odds: baseOdds[i],
+          position: 0,
+          gateLoaded: false,
+          scratched: false,
+          style,
+          styleDesc: this._STYLES[style].desc,
+          stamina: 0.75 + Math.random() * 0.5, // 0.75-1.25 stamina pool
+          energy: 1.0, // starts full, depletes during race
+          momentum: 0, // builds up gradually for smoother movement
+          topSpeed: 0.85 + Math.random() * 0.3, // individual speed cap variance
+        };
+      });
+
+      // Real-ish race duration scaling
       const raceDuration = Math.round(distance * 0.015);
-      // Speed per tick to finish in raceDuration seconds at 100ms ticks
       const totalTicks = raceDuration * 10;
-      const baseSpeed = 100 / totalTicks; // base speed to finish on time
+      const baseSpeed = 100 / totalTicks;
+
+      // Track conditions affect the race
+      const CONDITIONS = [
+        { name: 'FIRM 1', factor: 1.05, favours: 'frontRunner' },
+        { name: 'GOOD 3', factor: 1.0, favours: null },
+        { name: 'GOOD 4', factor: 0.98, favours: null },
+        { name: 'SOFT 5', factor: 0.94, favours: 'closer' },
+        { name: 'SOFT 6', factor: 0.90, favours: 'closer' },
+        { name: 'HEAVY 8', factor: 0.85, favours: 'closer' },
+      ];
+      const trackCondition = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
 
       room.gameState = {
         phase: 'betting',
@@ -792,25 +831,26 @@ const games = {
         distance,
         raceDuration,
         baseSpeed,
-        commentary: `Race ${room._raceNumber} — ${distance}m — ${horses.filter(h=>!h.scratched).length} runners`,
-        speak: `Race ${room._raceNumber}. ${distance} meters. ${numHorses} runners. Place your bets now.`,
+        trackCondition: trackCondition.name,
+        trackFactor: trackCondition.factor,
+        trackFavours: trackCondition.favours,
+        commentary: `Race ${room._raceNumber} — ${distance}m — ${trackCondition.name} — ${horses.filter(h=>!h.scratched).length} runners`,
+        speak: `Race ${room._raceNumber}. ${distance} meters. Track rated ${trackCondition.name.replace(/(\d)/, ' $1')}. ${numHorses} runners. Place your bets now.`,
       };
 
       // Random late scratching (15% chance per race, max 1-2 horses, never scratch all)
       if (numHorses > 5 && Math.random() < 0.15) {
         const scratchCount = Math.random() < 0.7 ? 1 : 2;
-        const scratchable = horses.filter(h => h.baseOdds > 5); // don't scratch favourites
+        const scratchable = horses.filter(h => h.baseOdds > 5);
         for (let s = 0; s < scratchCount && scratchable.length > 0; s++) {
           const idx = Math.floor(Math.random() * scratchable.length);
           const scratched = scratchable.splice(idx, 1)[0];
           scratched.scratched = true;
-          // Schedule the scratching announcement during betting
           const delay = 3000 + Math.random() * 8000;
           setTimeout(() => {
             if (!room.gameState || room.gameState.phase !== 'betting') return;
             room.gameState.commentary = `LATE SCRATCHING: ${scratched.name} (${scratched.id}) has been withdrawn!`;
             room.gameState.speak = `Late scratching. Number ${scratched.id}, ${scratched.name}, has been scratched from the race.`;
-            // Refund any bets on this horse
             for (const [pid, bet] of Object.entries(room.gameState.bets)) {
               if (bet.horseId === scratched.id) {
                 const player = room.players.find(p => p.id === pid);
@@ -828,7 +868,7 @@ const games = {
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       startBettingTimer(room, 25);
 
-      // Fluctuate odds every 2s
+      // Fluctuate odds every 2s — gentler drift
       room._oddsInterval = setInterval(() => {
         if (!room.gameState || room.gameState.phase !== 'betting') {
           clearInterval(room._oddsInterval);
@@ -836,13 +876,16 @@ const games = {
           return;
         }
         for (const horse of room.gameState.horses) {
-          const drift = (Math.random() - 0.5) * 0.6;
+          if (horse.scratched) continue;
+          // Gentler random drift (±0.3 instead of ±0.6)
+          const drift = (Math.random() - 0.5) * 0.3;
           horse.odds = Math.round(Math.max(1.5, Math.min(50, horse.odds + drift)) * 10) / 10;
         }
         recalculateOdds(room.gameState.horses, room.gameState.bets);
         broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       }, 2000);
     },
+
     placeBet(room, playerId, horseId, amount) {
       if (!room.gameState || room.gameState.phase !== 'betting') return;
       const player = room.players.find(p => p.id === playerId);
@@ -855,6 +898,7 @@ const games = {
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       broadcastToRoom(room, 'players:update', playerList(room));
     },
+
     race(room) {
       const gs = room.gameState;
       if (!gs) return;
@@ -887,7 +931,6 @@ const games = {
           loadIdx++;
         } else {
           clearInterval(loadInterval);
-          // All loaded — pause then start
           gs.commentary = 'All horses are loaded. Starter ready...';
           gs.speak = 'All horses are loaded. The starter is ready.';
           broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
@@ -899,7 +942,6 @@ const games = {
             gs.speak = null;
             broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
 
-            // ── PHASE: Gates open ──
             setTimeout(() => {
               if (room.currentGame !== 'horseracing' || room.gameState !== gs) return;
               gs.phase = 'racing';
@@ -917,6 +959,8 @@ const games = {
       let tickCount = 0;
       let lastLeaderId = null;
       let leadChangeCount = 0;
+      let lastCommentTick = -30;
+      const styles = this._STYLES;
 
       const interval = setInterval(() => {
         if (room.currentGame !== 'horseracing' || !room.gameState || room.gameState !== gs) {
@@ -928,23 +972,77 @@ const games = {
         let leaderId = null;
         let leaderPos = -1;
         let secondPos = -1;
+        let thirdPos = -1;
         let finished = false;
+
+        const activeHorses = gs.horses.filter(h => !h.scratched);
+        const avgPos = activeHorses.length > 0 ? activeHorses.reduce((s, h) => s + h.position, 0) / activeHorses.length : 0;
+
+        // Determine race stage (0-1 progress)
+        const raceProgress = avgPos / 100;
+        let stageMult; // which stage multiplier to use
 
         for (const horse of gs.horses) {
           if (horse.scratched) continue;
-          // Speed scaled by distance — longer races = slower per tick
-          const spd = gs.baseSpeed || 0.7;
-          const randomVar = (Math.random() - 0.3) * spd * 1.5;
-          const oddsEdge = (10 - horse.baseOdds) * spd * 0.03;
-          const surge = Math.random() < 0.04 ? (Math.random() * spd * 4) : 0;
-          horse.position += spd + randomVar + oddsEdge + surge;
 
+          const spd = gs.baseSpeed || 0.7;
+          const style = styles[horse.style] || styles.onePace;
+
+          // Stage-based speed from running style
+          if (raceProgress < 0.3) {
+            stageMult = style.early;
+          } else if (raceProgress < 0.7) {
+            stageMult = style.mid;
+          } else {
+            stageMult = style.late;
+          }
+
+          // Track condition bonus for favoured style
+          let trackBonus = 1.0;
+          if (gs.trackFavours === horse.style) trackBonus = 1.06;
+
+          // Stamina/energy system — energy depletes faster in later stages
+          const depletionRate = raceProgress < 0.5 ? 0.0008 : 0.0015 + raceProgress * 0.001;
+          horse.energy = Math.max(0.4, horse.energy - depletionRate / horse.stamina);
+
+          // Base speed with running style and energy
+          const styledSpeed = spd * stageMult * horse.topSpeed * horse.energy * trackBonus * (gs.trackFactor || 1.0);
+
+          // Reduced random variance — smoother, more realistic movement
+          const randomVar = (Math.random() - 0.4) * spd * 0.8;
+
+          // Odds edge — favourites have a meaningful but not dominant advantage
+          const oddsEdge = (10 - horse.baseOdds) * spd * 0.025;
+
+          // Momentum — builds gradually for smoother position changes
+          const targetSpeed = styledSpeed + randomVar + oddsEdge;
+          horse.momentum += (targetSpeed - horse.momentum) * 0.3;
+
+          // Surge — dramatic burst in final stretch for closers, rare for others
+          let surge = 0;
+          if (raceProgress > 0.75 && horse.energy > 0.5) {
+            if (horse.style === 'closer' && Math.random() < 0.06) {
+              surge = spd * 3.5;
+            } else if (Math.random() < 0.02) {
+              surge = spd * 2.0;
+            }
+          } else if (Math.random() < 0.015) {
+            surge = spd * 1.5;
+          }
+
+          horse.position += horse.momentum + surge;
+
+          // Track all positions for ranking
           if (horse.position > leaderPos) {
+            thirdPos = secondPos;
             secondPos = leaderPos;
             leaderPos = horse.position;
             leaderId = horse.id;
           } else if (horse.position > secondPos) {
+            thirdPos = secondPos;
             secondPos = horse.position;
+          } else if (horse.position > thirdPos) {
+            thirdPos = horse.position;
           }
 
           if (horse.position >= 100) {
@@ -955,31 +1053,36 @@ const games = {
 
         gs.leader = leaderId;
         const gap = leaderPos - secondPos;
+        const rearGap = leaderPos - (activeHorses.length > 0 ? Math.min(...activeHorses.map(h => h.position)) : 0);
 
-        // Lead change detection
-        if (leaderId !== lastLeaderId && lastLeaderId !== null) {
+        // Compute live race positions for display
+        const sorted = [...activeHorses].sort((a, b) => b.position - a.position);
+        gs.livePositions = sorted.map((h, i) => ({ id: h.id, pos: i + 1, margin: i === 0 ? 0 : (sorted[0].position - h.position).toFixed(1) }));
+
+        // Lead change detection — only announce if lead held for a few ticks
+        if (leaderId !== lastLeaderId && lastLeaderId !== null && tickCount > 10) {
           leadChangeCount++;
           const newLeader = gs.horses.find(h => h.id === leaderId);
-          if (newLeader) {
+          if (newLeader && (tickCount - lastCommentTick) > 15) {
             gs.commentary = `${newLeader.name} takes the lead!`;
-            gs.speak = `${newLeader.name} takes the lead!`;
+            gs.speak = `${newLeader.name} surges to the front!`;
+            lastCommentTick = tickCount;
           }
         }
         lastLeaderId = leaderId;
 
-        // Dynamic commentary — every ~3 seconds regardless of race length
-        const activeHorses = gs.horses.filter(h => !h.scratched);
-        const avgPos = activeHorses.length > 0 ? activeHorses.reduce((s, h) => s + h.position, 0) / activeHorses.length : 0;
-        const commentInterval = 30; // every 30 ticks = 3 seconds
-        if (tickCount % commentInterval === Math.floor(commentInterval / 2) && !gs.speak) {
+        // Dynamic commentary — every ~4 seconds, with much more variety
+        const commentInterval = 40;
+        if ((tickCount - lastCommentTick) >= commentInterval && !gs.speak) {
           const leader = gs.horses.find(h => h.id === leaderId);
           if (leader) {
-            const lines = games.horseracing._getCommentary(avgPos, leader, gap, gs.horses);
+            const lines = games.horseracing._getCommentary(avgPos, leader, gap, rearGap, gs.horses, gs.distance, sorted);
             gs.commentary = lines.text;
             if (lines.speak) gs.speak = lines.speak;
+            lastCommentTick = tickCount;
           }
         } else if (tickCount % 5 === 0) {
-          gs.speak = null; // clear speak so it doesn't repeat
+          gs.speak = null;
         }
 
         tickCount++;
@@ -990,14 +1093,19 @@ const games = {
           room._raceInterval = null;
           gs.phase = 'result';
           const winHorse = gs.horses.find(h => h.id === gs.winner);
-          if (winHorse) {
-            gs.commentary = `${winHorse.name} wins the race!`;
-            gs.speak = `And it's ${winHorse.name} who takes the victory at odds of ${winHorse.lockedOdds} to one!`;
-          }
 
-          // Determine places for all horses
-          const sorted = [...gs.horses].sort((a, b) => b.position - a.position);
-          gs.places = sorted.map(h => h.id);
+          // Final positions
+          const finalSorted = [...gs.horses].filter(h => !h.scratched).sort((a, b) => b.position - a.position);
+          gs.places = finalSorted.map(h => h.id);
+          gs.margins = finalSorted.map((h, i) => i === 0 ? 0 : +(finalSorted[0].position - h.position).toFixed(1));
+
+          if (winHorse) {
+            const second = finalSorted[1];
+            const margin = gs.margins[1] || 0;
+            const marginDesc = margin < 0.5 ? 'by a nose' : margin < 1.5 ? 'by a short head' : margin < 3 ? 'by a length' : margin < 6 ? 'by two lengths' : 'by a commanding margin';
+            gs.commentary = `${winHorse.name} wins ${marginDesc}!`;
+            gs.speak = `And it's ${winHorse.name} who takes the victory ${marginDesc} at odds of ${(winHorse.lockedOdds||winHorse.odds).toFixed(1)} to one!${second ? ` ${second.name} in second.` : ''}`;
+          }
 
           for (const [pid, bet] of Object.entries(gs.bets)) {
             const player = room.players.find(p => p.id === pid);
@@ -1020,35 +1128,75 @@ const games = {
       room._raceInterval = interval;
     },
 
-    _getCommentary(avgPos, leader, gap, horses) {
-      if (avgPos < 20) {
-        const lines = [
-          "The field is bunching up early on!",
-          "Settling into their stride now.",
-          "A clean start as they head down the track.",
-        ];
-        return { text: lines[Math.floor(Math.random() * lines.length)] };
-      } else if (avgPos < 40) {
-        if (gap > 8) return { text: `${leader.name} has opened up a big lead!`, speak: `${leader.name} is pulling away from the field!` };
-        return { text: "The pack is tightly bunched going through the first turn!" };
-      } else if (avgPos < 60) {
-        const lines = [
+    _getCommentary(avgPos, leader, gap, rearGap, horses, distance, sorted) {
+      const activeHorses = horses.filter(h => !h.scratched);
+      const second = sorted && sorted[1];
+      const third = sorted && sorted[2];
+      const tail = sorted && sorted[sorted.length - 1];
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+      if (avgPos < 15) {
+        return { text: pick([
+          "The field is settling into their stride after a clean break.",
+          "They're jostling for position in the early stages.",
+          `${leader.name} has jumped well and leads them out.`,
+          "A good start, the field is well bunched early.",
+          "The jockeys are letting them find their rhythm.",
+          `${leader.name} shows early speed from the gates.`,
+        ]) };
+      } else if (avgPos < 30) {
+        if (gap > 6) return { text: `${leader.name} has sprinted clear — opening up a big lead early!`, speak: `${leader.name} has gone right to the front and opened up a significant lead.` };
+        const closer = activeHorses.find(h => h.style === 'closer');
+        return { text: pick([
+          `${leader.name} leads them along at a solid tempo.`,
+          "The pack is tightly bunched as they settle in.",
+          second ? `${second.name} is tracking ${leader.name} in second.` : "Compact field early on.",
+          closer ? `${closer.name} is being nursed along at the back of the field.` : "All runners travelling well.",
+          `The pace is honest as they approach the first turn.`,
+          `${leader.name} controls the tempo from the front.`,
+        ]) };
+      } else if (avgPos < 50) {
+        return { text: pick([
           "They're into the back straight now!",
-          "The jockeys are positioning for the final push!",
+          "The jockeys are positioning for the run home.",
           `${leader.name} continues to lead as they pass the halfway mark.`,
-        ];
-        return { text: lines[Math.floor(Math.random() * lines.length)], speak: `Halfway through, ${leader.name} leads the field.` };
-      } else if (avgPos < 80) {
-        if (gap < 3) return { text: "It's incredibly tight at the front! Anyone's race!", speak: "It's neck and neck! This could go to any of them!" };
-        return { text: "Rounding the final bend now!", speak: "They're turning for home!" };
+          second ? `${second.name} is breathing down ${leader.name}'s neck!` : "The leader looks comfortable.",
+          "The tempo is starting to quicken now.",
+          `A few runners are starting to improve their positions.`,
+          rearGap > 15 ? `The field is starting to spread out now.` : "They remain tightly bunched through the middle stages.",
+        ]), speak: `Halfway through, ${leader.name} leads the field.` };
+      } else if (avgPos < 75) {
+        if (gap < 2) return { text: pick([
+          "It's incredibly tight at the front! Anyone's race!",
+          `${leader.name} and ${second?.name || 'the second horse'} are locked together!`,
+          "You couldn't split them at the top! This is sensational!",
+        ]), speak: "It's neck and neck! This could go to any of them!" };
+        return { text: pick([
+          "They're turning for home — this is where it matters!",
+          "The whips are coming out as they round the final bend!",
+          `${leader.name} is being asked to go now!`,
+          second ? `${second.name} is winding up on the outside!` : "The field is starting to string out.",
+          "The closers are starting to make their move!",
+          `It's all about who has the most left in the tank now!`,
+          third ? `${third.name} is finishing hard from the back of the field!` : "The pace is telling now.",
+        ]), speak: "They're turning for home!" };
       } else {
-        const lines = [
+        const closerMaking = activeHorses.find(h => h.style === 'closer' && h.position > avgPos + 5);
+        return { text: pick([
           "Into the final furlong! The crowd is on their feet!",
           "It's a sprint to the finish line!",
           "The whips are out! They're giving everything!",
           `${leader.name} is being pushed all the way to the line!`,
-        ];
-        return { text: lines[Math.floor(Math.random() * lines.length)], speak: "Down the final stretch! Here they come!" };
+          gap < 2 ? "Photo finish! They can't be separated!" : `${leader.name} is holding on grimly!`,
+          closerMaking ? `${closerMaking.name} is storming home late!` : "The leader is staying strong!",
+          `The crowd roars as they hit the final ${distance < 1400 ? '100' : '200'} metres!`,
+          second ? `${second.name} is throwing everything at the leader!` : "The finish line is in sight!",
+          `What a race this has been! Down to the wire!`,
+        ]), speak: pick([
+          "Down the final stretch! Here they come!",
+          `${leader.name} is fighting to hold on!`,
+          gap < 2 ? "This is going to be desperately close!" : `${leader.name} is powering to the line!`,
+        ]) };
       }
     },
   },
