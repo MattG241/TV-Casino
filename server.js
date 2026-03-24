@@ -863,6 +863,41 @@ const games = {
         };
       });
 
+      // ── FORM GUIDE — carry race history between races ──
+      if (!room._horseFormHistory) room._horseFormHistory = {};
+      // Assign form from previous races (or generate fake history for first race)
+      for (const horse of horses) {
+        const existing = room._horseFormHistory[horse.name];
+        if (existing) {
+          horse.form = existing.slice(-5); // last 5 results
+        } else {
+          // Generate plausible fake form based on odds (favourites have better form)
+          const formLen = 2 + Math.floor(Math.random() * 3);
+          horse.form = [];
+          for (let f = 0; f < formLen; f++) {
+            if (horse.baseOdds < 5) {
+              horse.form.push([1,1,2,2,3,4][Math.floor(Math.random() * 6)]); // mostly top 4
+            } else if (horse.baseOdds < 10) {
+              horse.form.push([2,3,4,5,6,7][Math.floor(Math.random() * 6)]);
+            } else {
+              horse.form.push([3,5,6,7,8,9,10][Math.floor(Math.random() * 7)]);
+            }
+          }
+        }
+        // Form fitness bonus — recent winners are slightly sharper
+        const recentWins = horse.form.filter(f => f <= 2).length;
+        horse.formBonus = recentWins * 0.015; // +1.5% speed per recent podium
+      }
+
+      // ── BARRIER DRAW ──
+      // Assign barriers (gate positions) — shuffled, not sequential
+      const barriers = Array.from({length: numHorses}, (_, i) => i + 1);
+      for (let i = barriers.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [barriers[i], barriers[j]] = [barriers[j], barriers[i]];
+      }
+      horses.forEach((h, i) => { h.barrier = barriers[i]; });
+
       // Real-ish race duration scaling
       const raceDuration = Math.round(distance * 0.015);
       const totalTicks = raceDuration * 10;
@@ -879,6 +914,23 @@ const games = {
       ];
       const trackCondition = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
 
+      // ── TRACK BIAS — some tracks favour inside or outside runners ──
+      const BIASES = [
+        { name: 'Inside', factor: 0.03 },  // low barriers get +3% speed
+        { name: 'Neutral', factor: 0 },
+        { name: 'Neutral', factor: 0 },
+        { name: 'Outside', factor: -0.02 }, // high barriers get +2% speed (inside disadvantaged)
+      ];
+      const trackBias = BIASES[Math.floor(Math.random() * BIASES.length)];
+
+      // Calculate barrier advantage per horse
+      const midBarrier = (numHorses + 1) / 2;
+      for (const horse of horses) {
+        // Positive bias = low barriers good. barrierEdge: -1 to +1 where + means advantaged
+        const barrierPosition = (midBarrier - horse.barrier) / midBarrier; // +1 for barrier 1, -1 for high barrier
+        horse.barrierEdge = barrierPosition * trackBias.factor;
+      }
+
       room.gameState = {
         phase: 'betting',
         horses,
@@ -892,8 +944,9 @@ const games = {
         trackCondition: trackCondition.name,
         trackFactor: trackCondition.factor,
         trackFavours: trackCondition.favours,
+        trackBias: trackBias.name,
         commentary: `Race ${room._raceNumber} — ${distance}m — ${trackCondition.name} — ${horses.filter(h=>!h.scratched).length} runners`,
-        speak: `Race ${room._raceNumber}. ${distance} meters. Track rated ${trackCondition.name.replace(/(\d)/, ' $1')}. ${numHorses} runners. Place your bets now.`,
+        speak: `Race ${room._raceNumber}. ${distance} meters. Track rated ${trackCondition.name.replace(/(\d)/, ' $1')}. ${numHorses} runners.${trackBias.name !== 'Neutral' ? ` Track bias favouring ${trackBias.name.toLowerCase()} runners.` : ''} Place your bets now.`,
       };
 
       // Random late scratching (15% chance per race, max 1-2 horses, never scratch all)
@@ -1223,6 +1276,12 @@ const games = {
           // ── JOCKEY SKILL BONUS — better jockeys extract more from the horse ──
           const jockeyBonus = spd * (horse.jockeySkill - 0.8) * 0.15;
 
+          // ── FORM FITNESS BONUS — horses with recent good form are sharper ──
+          const formBonus = (horse.formBonus || 0) * spd;
+
+          // ── BARRIER/TRACK BIAS EDGE — early race advantage from draw ──
+          const barrierBonus = raceProgress < 0.3 ? (horse.barrierEdge || 0) * spd : (horse.barrierEdge || 0) * spd * 0.3;
+
           // ── TRAFFIC PENALTY — running wide costs ground ──
           const lanePenalty = Math.abs(ai.lane) * spd * 0.04;
 
@@ -1230,7 +1289,7 @@ const games = {
           const nervePenalty = ai.nervous * spd * 0.1;
 
           // ── MOMENTUM — smooth acceleration/deceleration ──
-          const targetSpeed = styledSpeed + randomVar + oddsEdge + jockeyBonus - lanePenalty - nervePenalty;
+          const targetSpeed = styledSpeed + randomVar + oddsEdge + jockeyBonus + formBonus + barrierBonus - lanePenalty - nervePenalty;
           horse.momentum += (targetSpeed - horse.momentum) * 0.25;
 
           // ── SURGE — dramatic finishing kick when jockey asks ──
@@ -1331,6 +1390,14 @@ const games = {
           const finalSorted = [...gs.horses].filter(h => !h.scratched).sort((a, b) => b.position - a.position);
           gs.places = finalSorted.map(h => h.id);
           gs.margins = finalSorted.map((h, i) => i === 0 ? 0 : +(finalSorted[0].position - h.position).toFixed(1));
+
+          // ── Save form history for next race ──
+          if (!room._horseFormHistory) room._horseFormHistory = {};
+          finalSorted.forEach((h, pos) => {
+            if (!room._horseFormHistory[h.name]) room._horseFormHistory[h.name] = [];
+            room._horseFormHistory[h.name].push(pos + 1); // 1-indexed finish position
+            if (room._horseFormHistory[h.name].length > 5) room._horseFormHistory[h.name].shift();
+          });
 
           if (winHorse) {
             const second = finalSorted[1];

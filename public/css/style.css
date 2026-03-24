@@ -863,6 +863,31 @@ body {
 
 .hr-r-details { flex: 1; min-width: 0; }
 .hr-r-name { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Form guide dots */
+.hr-r-form {
+  display: flex;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.hr-form-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 900;
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+}
+
+.hr-form-dot.hr-f1 { background: var(--gold); color: #000; }
+.hr-form-dot.hr-f2 { background: #888; }
+.hr-form-dot.hr-f3 { background: #a0522d; }
+.hr-form-dot.hr-f5 { background: rgba(255,255,255,0.15); }
 .hr-r-sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
 .hr-r-style { opacity: 0.6; text-transform: uppercase; font-size: 9px; letter-spacing: 0.3px; }
 .hr-r-scr { color: var(--red); font-weight: 900; font-size: 11px; }

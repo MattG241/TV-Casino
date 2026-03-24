@@ -674,7 +674,7 @@ function renderHorseRacing(state) {
         <div class="race-header-left">
           <span class="race-num-badge">R${state.raceNumber || ''}</span>
           <span class="race-dist">${state.distance || ''}m</span>
-          <span class="race-condition">${state.trackCondition || ''}</span>
+          <span class="race-condition">${state.trackCondition || ''}${state.trackBias && state.trackBias !== 'Neutral' ? ' · ' + state.trackBias + ' bias' : ''}</span>
         </div>
         <div class="race-header-right">
           <span class="race-runners">${horses.filter(h=>!h.scratched).length} runners</span>
@@ -709,7 +709,8 @@ function renderHorseRacing(state) {
             <span class="hr-r-num" style="background:${h.color}">${origIdx+1}</span>
             <div class="hr-r-details">
               <div class="hr-r-name">${h.name}${isFav ? ' <span class="hr-fav-tag">FAV</span>' : ''}</div>
-              <div class="hr-r-sub">${h.jockey || ''} <span class="hr-r-style">${h.styleDesc || ''}</span></div>
+              <div class="hr-r-sub">${h.jockey || ''} · B${h.barrier || origIdx+1} <span class="hr-r-style">${h.styleDesc || ''}</span></div>
+              ${h.form && h.form.length > 0 ? `<div class="hr-r-form">${h.form.map(f => `<span class="hr-form-dot ${f===1?'hr-f1':f===2?'hr-f2':f===3?'hr-f3':f<=5?'hr-f5':''}">${f}</span>`).join('')}</div>` : ''}
             </div>
             <div class="hr-r-odds-col">
               <div class="hr-r-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">$${h.odds.toFixed(2)}</div>
