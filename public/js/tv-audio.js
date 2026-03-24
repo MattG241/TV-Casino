@@ -222,6 +222,29 @@ const CasinoAudio = (() => {
       setTimeout(() => playNoise(2, 0.1), 600);
     },
 
+    // Spoken race commentary via Web Speech API
+    speak(text) {
+      if (!enabled || !text) return;
+      if (!('speechSynthesis' in window)) return;
+      // Cancel any ongoing speech
+      speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 1.1;
+      utter.pitch = 0.9;
+      utter.volume = 0.8;
+      // Try to pick a male English voice
+      const voices = speechSynthesis.getVoices();
+      const preferred = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('male'))
+        || voices.find(v => v.lang.startsWith('en-GB'))
+        || voices.find(v => v.lang.startsWith('en'));
+      if (preferred) utter.voice = preferred;
+      speechSynthesis.speak(utter);
+    },
+
+    stopSpeech() {
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+    },
+
     // Poker fold
     fold() {
       playTone(300, 0.15, 'sine', 0.15);

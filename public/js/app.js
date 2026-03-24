@@ -611,7 +611,7 @@ function renderHorseRacing(state) {
 
   if (state.phase === 'betting') {
     el.innerHTML = `
-      <div class="timer-bar"><div class="timer-fill" style="width:${(state.timer/15)*100}%"></div></div>
+      <div class="timer-bar"><div class="timer-fill" style="width:${(state.timer/25)*100}%"></div></div>
       <div class="timer-text">${state.timer}s to place bets</div>
 
       <div class="horse-select-grid">
@@ -649,9 +649,12 @@ function renderHorseRacing(state) {
     const commentary = state.commentary || '';
     const isRacing = state.phase === 'racing';
     const isStarting = state.phase === 'starting';
+    const isLoading = state.phase === 'loading';
+    const atGate = isStarting || isLoading;
 
     el.innerHTML = `
-      ${isStarting ? `<div class="race-starting-banner">AT THE GATE</div>` : ''}
+      ${isLoading ? `<div class="race-starting-banner">LOADING BARRIERS</div>` : ''}
+      ${isStarting ? `<div class="race-starting-banner" style="color:var(--red)">GATES OPENING!</div>` : ''}
       ${commentary ? `<div class="race-commentary">${commentary}</div>` : ''}
 
       <div class="race-track">
@@ -667,8 +670,8 @@ function renderHorseRacing(state) {
             <div class="track-lane" style="background:linear-gradient(90deg, #2a1f0f, #3d2b1a)">
               <div class="finish-line"></div>
               <div class="track-lane-grass"></div>
-              <div class="horse-marker ${isRacing ? 'racing' : ''} ${state.winner === h.id ? 'winner' : ''} ${isStarting ? 'at-gate' : ''}"
-                style="left:calc(${Math.min(h.position || 0, 93)}% - 10px)">
+              <div class="horse-marker ${isRacing ? 'racing' : ''} ${state.winner === h.id ? 'winner' : ''} ${atGate ? 'at-gate' : ''}"
+                style="left:calc(${atGate ? 2 : Math.min(h.position || 0, 93)}% - 10px); ${isLoading && !h.gateLoaded ? 'opacity:0.3' : ''}"
                 <svg viewBox="0 0 28 20" width="28" height="20">
                   <path d="M4 16 L7 10 L9 11 L11 6 L14 5 L18 4 L22 4 L25 5 L27 4 L27 6 L25 7 L23 9 L22 14 L24 16 L22 16 L20 12 L16 11 L13 13 L11 16 L9 16 L12 11 L9 14 L7 16 Z"
                     fill="${h.color}" stroke="rgba(0,0,0,0.3)" stroke-width="0.3"/>

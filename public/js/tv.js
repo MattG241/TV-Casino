@@ -661,7 +661,8 @@ function renderTVPoker(state) {
 // ── TV HORSE RACING ─────────────────────────────────────────────────────
 
 let lastRacePhase = null;
-const HORSE_SILKS = ['🔴','🔵','🟡','⚫','🟢','🟣'];
+let lastSpokenText = null;
+const HORSE_SILKS = ['🔴','🔵','🟡','⚫','🟢','🟣','🟠','🩵'];
 
 function renderTVHorseRacing(state) {
   const el = document.getElementById('tvHorseracingContent');
@@ -679,6 +680,12 @@ function renderTVHorseRacing(state) {
       setTimeout(() => { if (anyWin) CasinoAudio.bigWin(); }, 800);
     }
     lastRacePhase = state.phase;
+  }
+
+  // Spoken commentary
+  if (state.speak && state.speak !== lastSpokenText) {
+    lastSpokenText = state.speak;
+    CasinoAudio.speak(state.speak);
   }
 
   // Betting phase
@@ -717,16 +724,35 @@ function renderTVHorseRacing(state) {
     return;
   }
 
-  // Starting gate / Racing / Result
+  // Loading / Starting / Racing / Result
   const commentary = state.commentary || '';
   const leaderId = state.leader;
   const leaderHorse = horses.find(h => h.id === leaderId);
+  const isLoading = state.phase === 'loading';
+  const showTrack = isRacing || isStarting || isLoading || state.phase === 'result';
+
+  if (!showTrack) return; // betting is handled above
+
+  // Calculate lane positions for 8 horses
+  const laneCount = horses.length;
+  const laneHeight = Math.min(10, 80 / laneCount);
 
   el.innerHTML = `
     <div class="tv-race-broadcast">
       <div class="tv-race-topbar">
-        <div class="tv-race-live">${isRacing ? '<span class="live-dot"></span> LIVE' : isStarting ? 'STARTING' : 'FINAL'}</div>
+        <div class="tv-race-live">
+          ${isRacing ? '<span class="live-dot"></span> LIVE' :
+            isLoading ? 'LOADING' :
+            isStarting ? 'GATES OPENING' : 'FINAL'}
+        </div>
         ${leaderHorse && isRacing ? `<div class="tv-race-leader">LEAD: <strong style="color:${leaderHorse.color}">${leaderHorse.name}</strong></div>` : ''}
+        ${state.phase === 'result' && state.places ? `
+          <div class="tv-race-places">
+            1st: <strong style="color:${horses.find(h=>h.id===state.places[0])?.color}">${horses.find(h=>h.id===state.places[0])?.name}</strong>
+            &nbsp; 2nd: ${horses.find(h=>h.id===state.places[1])?.name}
+            &nbsp; 3rd: ${horses.find(h=>h.id===state.places[2])?.name}
+          </div>
+        ` : ''}
       </div>
 
       <div class="tv-race-3d-track">
@@ -734,21 +760,34 @@ function renderTVHorseRacing(state) {
           <div class="tv-track-rail tv-track-rail-top"></div>
           <div class="tv-track-rail tv-track-rail-bottom"></div>
           <div class="tv-track-finish-post" ${state.phase === 'result' ? 'style="box-shadow:0 0 20px rgba(201,168,76,0.5)"' : ''}></div>
+
+          ${isLoading || isStarting ? `
+            <div class="tv-starting-gate" ${isStarting ? 'style="opacity:0.3"' : ''}>
+              ${horses.map((h, i) => `
+                <div class="tv-gate-stall" style="top:${5 + i * (90/laneCount)}%; ${h.gateLoaded ? 'background:rgba(255,255,255,0.08)' : ''}">
+                  <span class="tv-gate-num">${i+1}</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
           ${horses.map((h, i) => {
-            const pos = Math.min(h.position || 0, 95);
-            const laneY = 10 + (i * 14);
+            const pos = isLoading || isStarting ? 2 : Math.min(h.position || 0, 95);
+            const laneY = 5 + (i * (90 / laneCount));
             const isWinner = state.winner === h.id;
-            const scale = 0.8 + (pos / 100) * 0.4;
+            const scale = 0.7 + (pos / 100) * 0.35;
+            const loaded = h.gateLoaded || isRacing || state.phase === 'result';
             return `
-              <div class="tv-horse-3d ${isRacing ? 'galloping' : ''} ${isWinner && state.phase === 'result' ? 'winner-flash' : ''} ${isStarting ? 'at-gate' : ''}"
-                style="left:calc(${pos}% - 10px); top:${laneY}%; transform:scale(${scale});">
-                <div class="tv-horse-body" style="color:${h.color}">
-                  <div class="tv-jockey-silk">${HORSE_SILKS[i] || '⚪'}</div>
-                  <svg class="tv-horse-svg" viewBox="0 0 50 35" width="50" height="35">
+              <div class="tv-horse-3d ${isRacing ? 'galloping' : ''} ${isWinner && state.phase === 'result' ? 'winner-flash' : ''} ${!loaded && isLoading ? 'approaching' : ''}"
+                style="left:calc(${pos}% - 8px); top:${laneY}%; transform:scale(${scale}); ${!loaded && isLoading ? 'opacity:0.3' : ''}">
+                <div class="tv-horse-body">
+                  <svg class="tv-horse-svg" viewBox="0 0 50 35" width="45" height="32">
                     <path d="M8 28 L12 18 L15 20 L18 12 L22 10 L28 8 L35 7 L40 9 L44 8 L46 10 L44 12 L40 11 L38 13 L36 18 L38 20 L40 28 L37 28 L35 22 L30 20 L25 22 L20 28 L17 28 L20 20 L15 24 L12 28 Z"
-                      fill="${h.color}" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+                      fill="${h.color}" stroke="rgba(0,0,0,0.4)" stroke-width="0.5"/>
                     <circle cx="44" cy="10" r="1.5" fill="#fff"/>
+                    <rect x="20" y="5" width="8" height="5" rx="2" fill="${h.color}" opacity="0.7"/>
                   </svg>
+                  <div class="tv-jockey-silk">${HORSE_SILKS[i] || '⚪'}</div>
                 </div>
                 <div class="tv-horse-number">${i + 1}</div>
               </div>
@@ -765,7 +804,7 @@ function renderTVHorseRacing(state) {
             <span class="tv-race-trophy">🏆</span>
             <span style="color:${horses.find(h=>h.id===state.winner)?.color}">${horses.find(h=>h.id===state.winner)?.name}</span>
             <span style="color:var(--text-secondary);font-size:14px;font-weight:400;margin-left:8px">
-              ${horses.find(h=>h.id===state.winner)?.odds}:1
+              ${(horses.find(h=>h.id===state.winner)?.lockedOdds || horses.find(h=>h.id===state.winner)?.odds)}:1
             </span>
           </div>
           <div class="tv-bets-list" style="margin-top:8px">

@@ -168,23 +168,25 @@ function generateHorseName(usedNames) {
 
 // ── Dynamic Odds System ─────────────────────────────────────────────────────
 
-function generateBaseOdds() {
-  // Generate realistic base odds for 6 horses
-  // One favourite, a couple mid-range, and some longshots
-  const templates = [
-    [2.5, 4, 5, 7, 10, 15],
-    [3, 3.5, 5, 6, 9, 12],
-    [2, 4, 6, 8, 10, 20],
-    [3, 4, 4.5, 6, 8, 14],
-    [2.5, 3.5, 5, 7, 11, 16],
-  ];
-  const template = templates[Math.floor(Math.random() * templates.length)];
-  // Shuffle so favourite isn't always lane 1
-  for (let i = template.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [template[i], template[j]] = [template[j], template[i]];
+function generateBaseOdds(count) {
+  // Generate realistic base odds for N horses
+  const odds = [];
+  // 1-2 favourites (2-4), 2-3 mid-range (5-8), rest longshots (9-25)
+  const favourites = 1 + Math.floor(Math.random() * 2);
+  const midRange = 2 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < count; i++) {
+    if (i < favourites) odds.push(2 + Math.random() * 2);
+    else if (i < favourites + midRange) odds.push(4.5 + Math.random() * 4);
+    else odds.push(9 + Math.random() * 16);
   }
-  return template;
+  // Round to 1 decimal
+  const rounded = odds.map(o => Math.round(o * 10) / 10);
+  // Shuffle
+  for (let i = rounded.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rounded[i], rounded[j]] = [rounded[j], rounded[i]];
+  }
+  return rounded;
 }
 
 function recalculateOdds(horses, bets) {
@@ -720,9 +722,9 @@ const games = {
   horseracing: {
     start(room) {
       if (room.currentGame !== 'horseracing') return;
-      const colors = ['#c0392b', '#2980b9', '#d4a843', '#2c3e50', '#27ae60', '#8e44ad'];
+      const colors = ['#c0392b', '#2980b9', '#d4a843', '#1a1a2e', '#27ae60', '#8e44ad', '#e67e22', '#16a085'];
       const usedNames = new Set();
-      const baseOdds = generateBaseOdds();
+      const baseOdds = generateBaseOdds(8);
       const horses = colors.map((color, i) => ({
         id: i + 1,
         name: generateHorseName(usedNames),
@@ -730,30 +732,31 @@ const games = {
         baseOdds: baseOdds[i],
         odds: baseOdds[i],
         position: 0,
+        gateLoaded: false,
       }));
       room.gameState = {
         phase: 'betting',
         horses,
         bets: {},
-        timer: 20,
+        timer: 25,
         winner: null,
+        commentary: 'The runners are being paraded before the race.',
+        speak: 'Welcome to the races. The runners are being paraded. Place your bets now.',
       };
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
-      startBettingTimer(room, 20);
+      startBettingTimer(room, 25);
 
-      // Fluctuate odds every 2 seconds during betting to simulate market movement
+      // Fluctuate odds every 2s
       room._oddsInterval = setInterval(() => {
         if (!room.gameState || room.gameState.phase !== 'betting') {
           clearInterval(room._oddsInterval);
           room._oddsInterval = null;
           return;
         }
-        // Small random drift even without new bets
         for (const horse of room.gameState.horses) {
           const drift = (Math.random() - 0.5) * 0.6;
           horse.odds = Math.round(Math.max(1.5, Math.min(50, horse.odds + drift)) * 10) / 10;
         }
-        // Recalculate based on actual bets
         recalculateOdds(room.gameState.horses, room.gameState.bets);
         broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       }, 2000);
@@ -763,10 +766,9 @@ const games = {
       const player = room.players.find(p => p.id === playerId);
       amount = parseInt(amount);
       if (!player || !amount || amount <= 0 || amount > player.chips) return;
-      if (room.gameState.bets[playerId]) return; // already bet
+      if (room.gameState.bets[playerId]) return;
       player.chips -= amount;
       room.gameState.bets[playerId] = { horseId, amount };
-      // Recalculate odds immediately when a bet comes in
       recalculateOdds(room.gameState.horses, room.gameState.bets);
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       broadcastToRoom(room, 'players:update', playerList(room));
@@ -776,115 +778,186 @@ const games = {
       if (!gs) return;
 
       // Stop odds fluctuation
-      if (room._oddsInterval) {
-        clearInterval(room._oddsInterval);
-        room._oddsInterval = null;
-      }
-      // Lock in final odds for payouts
-      for (const horse of gs.horses) {
-        horse.lockedOdds = horse.odds;
-      }
-
-      // Starting gate phase
-      gs.phase = 'starting';
-      gs.commentary = 'The horses are at the starting gate...';
-      broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
-
-      // Clear any existing race interval
+      if (room._oddsInterval) { clearInterval(room._oddsInterval); room._oddsInterval = null; }
       if (room._raceInterval) clearInterval(room._raceInterval);
 
-      // After 2s gate opens
-      setTimeout(() => {
-        if (room.currentGame !== 'horseracing' || room.gameState !== gs) return;
-        gs.phase = 'racing';
-        gs.commentary = "AND THEY'RE OFF!";
-        broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
+      // Lock in final odds
+      for (const horse of gs.horses) horse.lockedOdds = horse.odds;
 
-        let tickCount = 0;
-        const commentaryLines = [
-          null, null, null, null, null,
-          "They're jostling for position on the inside!",
-          null, null, null, null,
-          "The pack is tightening up!",
-          null, null, null, null,
-          "Coming around the bend now!",
-          null, null, null, null,
-          "It's neck and neck at the front!",
-          null, null, null, null,
-          "Into the final stretch!",
-          null, null, null, null,
-          "The crowd is on their feet!",
-        ];
+      // ── PHASE: Loading into barriers ──
+      gs.phase = 'loading';
+      gs.commentary = 'The horses are being loaded into the starting barriers...';
+      gs.speak = 'The horses are now being loaded into the starting barriers.';
+      broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
 
-        const interval = setInterval(() => {
-          if (room.currentGame !== 'horseracing' || !room.gameState || room.gameState !== gs) {
-            clearInterval(interval);
-            room._raceInterval = null;
-            return;
-          }
-
-          // Find current leader
-          let leaderId = null;
-          let leaderPos = -1;
-
-          let finished = false;
-          for (const horse of gs.horses) {
-            // High variance racing — odds give a slight edge, not a guarantee
-            // A 2:1 favourite only wins ~30-35% of the time, upsets are common
-            const randomBurst = Math.random() * 5; // big random component
-            const oddsEdge = (10 - horse.baseOdds) * 0.08; // tiny nudge from odds
-            const surge = Math.random() < 0.08 ? (Math.random() * 6) : 0; // random surge any horse can get
-            horse.position += 1.5 + randomBurst + oddsEdge + surge;
-            if (horse.position > leaderPos) {
-              leaderPos = horse.position;
-              leaderId = horse.id;
-            }
-            if (horse.position >= 100) {
-              horse.position = 100;
-              if (!finished) {
-                gs.winner = horse.id;
-                finished = true;
-              }
-            }
-          }
-
-          gs.leader = leaderId;
-
-          // Update commentary
-          if (tickCount < commentaryLines.length && commentaryLines[tickCount]) {
-            gs.commentary = commentaryLines[tickCount];
-          }
-          tickCount++;
-
+      // Load horses one by one
+      let loadIdx = 0;
+      const loadInterval = setInterval(() => {
+        if (room.currentGame !== 'horseracing' || room.gameState !== gs) {
+          clearInterval(loadInterval);
+          return;
+        }
+        if (loadIdx < gs.horses.length) {
+          gs.horses[loadIdx].gateLoaded = true;
+          gs.commentary = `Number ${loadIdx + 1}, ${gs.horses[loadIdx].name}, is loaded.`;
+          gs.speak = `Number ${loadIdx + 1}, ${gs.horses[loadIdx].name}, loaded.`;
+          broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
+          loadIdx++;
+        } else {
+          clearInterval(loadInterval);
+          // All loaded — pause then start
+          gs.commentary = 'All horses are loaded. Starter ready...';
+          gs.speak = 'All horses are loaded. The starter is ready.';
           broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
 
-          if (finished) {
-            clearInterval(interval);
-            room._raceInterval = null;
-            gs.phase = 'result';
-            const winHorse = gs.horses.find(h => h.id === gs.winner);
-            gs.commentary = `${winHorse.name} crosses the finish line!`;
-
-            for (const [pid, bet] of Object.entries(gs.bets)) {
-              const player = room.players.find(p => p.id === pid);
-              if (!player) continue;
-              if (bet.horseId === gs.winner) {
-                const payoutOdds = winHorse.lockedOdds || winHorse.odds;
-                player.chips += Math.round(bet.amount * payoutOdds);
-                bet.won = true;
-                bet.winAmount = Math.round(bet.amount * payoutOdds);
-              }
-            }
+          setTimeout(() => {
+            if (room.currentGame !== 'horseracing' || room.gameState !== gs) return;
+            gs.phase = 'starting';
+            gs.commentary = 'The gates are about to open!';
+            gs.speak = null;
             broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
-            broadcastToRoom(room, 'players:update', playerList(room));
 
+            // ── PHASE: Gates open ──
             setTimeout(() => {
-              if (room.currentGame === 'horseracing') games.horseracing.start(room);
-            }, 6000);
+              if (room.currentGame !== 'horseracing' || room.gameState !== gs) return;
+              gs.phase = 'racing';
+              gs.commentary = "AND THEY'RE OFF!";
+              gs.speak = "And they're off! The field breaks cleanly from the barriers!";
+              broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
+              this._startRace(room, gs);
+            }, 2000);
+          }, 1500);
+        }
+      }, 800);
+    },
+
+    _startRace(room, gs) {
+      let tickCount = 0;
+      let lastLeaderId = null;
+      let leadChangeCount = 0;
+
+      const interval = setInterval(() => {
+        if (room.currentGame !== 'horseracing' || !room.gameState || room.gameState !== gs) {
+          clearInterval(interval);
+          room._raceInterval = null;
+          return;
+        }
+
+        let leaderId = null;
+        let leaderPos = -1;
+        let secondPos = -1;
+        let finished = false;
+
+        for (const horse of gs.horses) {
+          // Slower movement for longer race (~15-20 seconds)
+          const randomBurst = Math.random() * 2.5;
+          const oddsEdge = (10 - horse.baseOdds) * 0.04;
+          const surge = Math.random() < 0.06 ? (Math.random() * 4) : 0;
+          horse.position += 0.8 + randomBurst + oddsEdge + surge;
+
+          if (horse.position > leaderPos) {
+            secondPos = leaderPos;
+            leaderPos = horse.position;
+            leaderId = horse.id;
+          } else if (horse.position > secondPos) {
+            secondPos = horse.position;
           }
-        }, 100);
-        room._raceInterval = interval;
-      }, 2500);
+
+          if (horse.position >= 100) {
+            horse.position = 100;
+            if (!finished) { gs.winner = horse.id; finished = true; }
+          }
+        }
+
+        gs.leader = leaderId;
+        const gap = leaderPos - secondPos;
+
+        // Lead change detection
+        if (leaderId !== lastLeaderId && lastLeaderId !== null) {
+          leadChangeCount++;
+          const newLeader = gs.horses.find(h => h.id === leaderId);
+          gs.commentary = `${newLeader.name} takes the lead!`;
+          gs.speak = `${newLeader.name} takes the lead!`;
+        }
+        lastLeaderId = leaderId;
+
+        // Dynamic commentary based on race progress
+        const avgPos = gs.horses.reduce((s, h) => s + h.position, 0) / gs.horses.length;
+        if (tickCount % 15 === 10 && !gs.speak) {
+          const leader = gs.horses.find(h => h.id === leaderId);
+          const lines = this._getCommentary(avgPos, leader, gap, gs.horses);
+          gs.commentary = lines.text;
+          if (lines.speak) gs.speak = lines.speak;
+        } else if (tickCount % 5 === 0) {
+          gs.speak = null; // clear speak so it doesn't repeat
+        }
+
+        tickCount++;
+        broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
+
+        if (finished) {
+          clearInterval(interval);
+          room._raceInterval = null;
+          gs.phase = 'result';
+          const winHorse = gs.horses.find(h => h.id === gs.winner);
+          gs.commentary = `${winHorse.name} wins the race!`;
+          gs.speak = `And it's ${winHorse.name} who takes the victory at odds of ${winHorse.lockedOdds} to one!`;
+
+          // Determine places for all horses
+          const sorted = [...gs.horses].sort((a, b) => b.position - a.position);
+          gs.places = sorted.map(h => h.id);
+
+          for (const [pid, bet] of Object.entries(gs.bets)) {
+            const player = room.players.find(p => p.id === pid);
+            if (!player) continue;
+            if (bet.horseId === gs.winner) {
+              const payoutOdds = winHorse.lockedOdds || winHorse.odds;
+              player.chips += Math.round(bet.amount * payoutOdds);
+              bet.won = true;
+              bet.winAmount = Math.round(bet.amount * payoutOdds);
+            }
+          }
+          broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
+          broadcastToRoom(room, 'players:update', playerList(room));
+
+          setTimeout(() => {
+            if (room.currentGame === 'horseracing') games.horseracing.start(room);
+          }, 8000);
+        }
+      }, 100);
+      room._raceInterval = interval;
+    },
+
+    _getCommentary(avgPos, leader, gap, horses) {
+      if (avgPos < 20) {
+        const lines = [
+          "The field is bunching up early on!",
+          "Settling into their stride now.",
+          "A clean start as they head down the track.",
+        ];
+        return { text: lines[Math.floor(Math.random() * lines.length)] };
+      } else if (avgPos < 40) {
+        if (gap > 8) return { text: `${leader.name} has opened up a big lead!`, speak: `${leader.name} is pulling away from the field!` };
+        return { text: "The pack is tightly bunched going through the first turn!" };
+      } else if (avgPos < 60) {
+        const lines = [
+          "They're into the back straight now!",
+          "The jockeys are positioning for the final push!",
+          `${leader.name} continues to lead as they pass the halfway mark.`,
+        ];
+        return { text: lines[Math.floor(Math.random() * lines.length)], speak: `Halfway through, ${leader.name} leads the field.` };
+      } else if (avgPos < 80) {
+        if (gap < 3) return { text: "It's incredibly tight at the front! Anyone's race!", speak: "It's neck and neck! This could go to any of them!" };
+        return { text: "Rounding the final bend now!", speak: "They're turning for home!" };
+      } else {
+        const lines = [
+          "Into the final furlong! The crowd is on their feet!",
+          "It's a sprint to the finish line!",
+          "The whips are out! They're giving everything!",
+          `${leader.name} is being pushed all the way to the line!`,
+        ];
+        return { text: lines[Math.floor(Math.random() * lines.length)], speak: "Down the final stretch! Here they come!" };
+      }
     },
   },
 };
