@@ -303,39 +303,91 @@ const CasinoAudio = (() => {
     },
 
     // Spoken race commentary — Web Speech API with audio fallback for Fire TV
+    _isSpeaking: false,
+    _speakQueue: null,
+    _selectedVoice: null,
+
     speak(text) {
       if (!enabled || !text) return;
 
       // Try Web Speech API first
       if ('speechSynthesis' in window && ttsReady) {
-        speechSynthesis.cancel();
+        // If currently speaking, DON'T interrupt — queue the text for after current finishes
+        if (this._isSpeaking) {
+          this._speakQueue = text; // overwrite queue — only latest matters
+          return;
+        }
+
+        this._isSpeaking = true;
+        this._speakQueue = null;
+
+        // Small delay to let any previous cancel settle
         setTimeout(() => {
           try {
             const utter = new SpeechSynthesisUtterance(text);
-            utter.rate = 1.15;
-            utter.pitch = 0.85;
-            utter.volume = 0.9;
-            const voices = ttsVoices.length > 0 ? ttsVoices : speechSynthesis.getVoices();
-            const preferred = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('male'))
-              || voices.find(v => v.lang === 'en-AU')
-              || voices.find(v => v.lang === 'en-GB')
-              || voices.find(v => v.lang.startsWith('en-'))
-              || voices.find(v => v.lang.startsWith('en'));
-            if (preferred) utter.voice = preferred;
-            utter.onerror = () => this._speakViaAudio(text); // fallback on error
+
+            // Voice selection — prefer natural/premium male English voices
+            if (!this._selectedVoice) {
+              const voices = ttsVoices.length > 0 ? ttsVoices : speechSynthesis.getVoices();
+              // Priority order: natural/premium voices > male > en-AU > en-GB > en-US
+              this._selectedVoice =
+                voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('natural') && v.name.toLowerCase().includes('male')) ||
+                voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('premium') && v.name.toLowerCase().includes('male')) ||
+                voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('enhanced') && v.name.toLowerCase().includes('male')) ||
+                voices.find(v => v.lang === 'en-AU' && !v.name.toLowerCase().includes('female')) ||
+                voices.find(v => v.lang === 'en-GB' && v.name.toLowerCase().includes('male')) ||
+                voices.find(v => v.lang === 'en-GB') ||
+                voices.find(v => v.lang === 'en-AU') ||
+                voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('male')) ||
+                voices.find(v => v.lang.startsWith('en-')) ||
+                voices.find(v => v.lang.startsWith('en'));
+            }
+
+            if (this._selectedVoice) utter.voice = this._selectedVoice;
+
+            // Natural race caller voice — slightly fast, deeper pitch, confident
+            utter.rate = 1.1;     // slightly fast like a real race caller
+            utter.pitch = 0.8;    // deeper, more authoritative
+            utter.volume = 0.95;
+
+            utter.onend = () => {
+              this._isSpeaking = false;
+              // If something was queued while we were speaking, play it after a brief pause
+              if (this._speakQueue) {
+                const queued = this._speakQueue;
+                this._speakQueue = null;
+                setTimeout(() => this.speak(queued), 300);
+              }
+            };
+
+            utter.onerror = () => {
+              this._isSpeaking = false;
+              this._speakViaAudio(text);
+            };
+
             speechSynthesis.speak(utter);
+
+            // Chrome bug workaround: keep alive for long utterances
             let keepAlive = setInterval(() => {
               if (!speechSynthesis.speaking) { clearInterval(keepAlive); return; }
               speechSynthesis.pause();
               speechSynthesis.resume();
             }, 10000);
-            utter.onend = () => clearInterval(keepAlive);
+            utter.onend = () => {
+              clearInterval(keepAlive);
+              this._isSpeaking = false;
+              if (this._speakQueue) {
+                const queued = this._speakQueue;
+                this._speakQueue = null;
+                setTimeout(() => this.speak(queued), 400);
+              }
+            };
           } catch (e) {
+            this._isSpeaking = false;
             this._speakViaAudio(text);
           }
-        }, 100);
+        }, 50);
       } else {
-        // No speechSynthesis (Fire TV, etc) — use server TTS proxy
         this._speakViaAudio(text);
       }
     },
@@ -354,6 +406,8 @@ const CasinoAudio = (() => {
     },
 
     stopSpeech() {
+      this._isSpeaking = false;
+      this._speakQueue = null;
       if ('speechSynthesis' in window) speechSynthesis.cancel();
       if (this._ttsAudio) { this._ttsAudio.pause(); this._ttsAudio = null; }
     },

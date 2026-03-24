@@ -951,7 +951,10 @@ const games = {
       if (!player || !amount || amount <= 0 || amount > player.chips) return;
       if (room.gameState.bets[playerId]) return;
       player.chips -= amount;
-      room.gameState.bets[playerId] = { horseId, amount };
+      // Lock in the odds at the time of the bet — player gets these odds regardless of future movement
+      const horse = room.gameState.horses.find(h => h.id === horseId);
+      const lockedAtOdds = horse ? horse.odds : 1;
+      room.gameState.bets[playerId] = { horseId, amount, lockedAtOdds };
       recalculateOdds(room.gameState.horses, room.gameState.bets);
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       broadcastToRoom(room, 'players:update', playerList(room));
@@ -1278,13 +1281,12 @@ const games = {
           blocked: h.ai?.blocked || false,
         }));
 
-        // Lead change detection
+        // Lead change detection — only if enough time since last commentary
         if (leaderId !== lastLeaderId && lastLeaderId !== null && tickCount > 10) {
           leadChangeCount++;
           const newLeader = gs.horses.find(h => h.id === leaderId);
-          if (newLeader && (tickCount - lastCommentTick) > 15) {
-            // AI-aware commentary for lead changes
-            const wasBlocked = newLeader.ai?.blocked;
+          // Only announce if at least 6 seconds since last spoken commentary
+          if (newLeader && (tickCount - lastCommentTick) > 60) {
             const isCloser = newLeader.style === 'closer';
             const texts = [
               `${newLeader.name} takes the lead!`,
@@ -1294,13 +1296,16 @@ const games = {
             gs.commentary = texts[Math.floor(Math.random() * texts.length)];
             gs.speak = gs.commentary;
             lastCommentTick = tickCount;
+          } else if (newLeader) {
+            // Still update the text overlay, just don't speak it (avoid interrupting)
+            gs.commentary = `${newLeader.name} takes the lead!`;
           }
         }
         lastLeaderId = leaderId;
 
-        // Dynamic AI-aware commentary
-        const commentInterval = 40;
-        if ((tickCount - lastCommentTick) >= commentInterval && !gs.speak) {
+        // Dynamic AI-aware commentary — every ~7 seconds to let TTS finish speaking
+        const commentInterval = 70; // 7 seconds between spoken commentary
+        if ((tickCount - lastCommentTick) >= commentInterval) {
           const leader = gs.horses.find(h => h.id === leaderId);
           if (leader) {
             const lines = games.horseracing._getCommentary(avgPos, leader, gap, rearGap, gs.horses, gs.distance, sorted);
@@ -1308,7 +1313,8 @@ const games = {
             if (lines.speak) gs.speak = lines.speak;
             lastCommentTick = tickCount;
           }
-        } else if (tickCount % 5 === 0) {
+        } else if (tickCount % 10 === 0) {
+          // Clear speak flag so TTS doesn't repeat, but keep text overlay
           gs.speak = null;
         }
 
@@ -1339,7 +1345,8 @@ const games = {
             const player = room.players.find(p => p.id === pid);
             if (!player || !winHorse) continue;
             if (bet.horseId === gs.winner) {
-              const payoutOdds = winHorse.lockedOdds || winHorse.odds || 1;
+              // Use the odds locked at bet placement time, not the final odds
+              const payoutOdds = bet.lockedAtOdds || winHorse.lockedOdds || winHorse.odds || 1;
               player.chips += Math.round(bet.amount * payoutOdds);
               bet.won = true;
               bet.winAmount = Math.round(bet.amount * payoutOdds);

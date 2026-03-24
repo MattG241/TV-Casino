@@ -717,7 +717,7 @@ function renderHorseRacing(state) {
         </div>
       ` : `
         <div class="status-msg success">
-          Bet $${myBet.amount} on ${horses.find(h=>h.id===myBet.horseId)?.name}
+          Bet $${myBet.amount} on ${horses.find(h=>h.id===myBet.horseId)?.name} @ $${myBet.lockedAtOdds ? myBet.lockedAtOdds.toFixed(2) : '?'}
         </div>
       `}
     `;
