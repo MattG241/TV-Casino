@@ -189,20 +189,54 @@ function showGameUI(game) {
   document.querySelectorAll('.game-view').forEach(v => v.classList.remove('active'));
   const view = document.getElementById(game + 'Game');
   if (view) view.classList.add('active');
+  // Reset end game button state
+  const endBtn = document.getElementById('endGameBtn');
+  if (endBtn) {
+    endBtn.classList.remove('requested');
+    endBtn.textContent = 'END GAME';
+  }
+  const endStatus = document.getElementById('endGameStatus');
+  if (endStatus) endStatus.textContent = '';
 }
 
-socket.on('game:ended', () => {
-  // Go back to voting
+// ── End Game ────────────────────────────────────────────────────────────
+
+let endGameRequested = false;
+
+function requestEndGame() {
+  if (endGameRequested) return;
+  endGameRequested = true;
+  socket.emit('game:end-request');
+  const btn = document.getElementById('endGameBtn');
+  if (btn) {
+    btn.classList.add('requested');
+    btn.textContent = 'WAITING...';
+  }
+}
+
+socket.on('lobby:ready-update', ({ readyCount, totalCount }) => {
+  const el = document.getElementById('endGameStatus');
+  if (el) {
+    el.textContent = `${readyCount}/${totalCount} ready to move on`;
+  }
+});
+
+// lobby:vote-start can come from "everyone's in" OR from all players ending the game
+socket.on('lobby:vote-start', () => {
   currentGame = null;
   myVote = null;
+  endGameRequested = false;
   showScreen('voteScreen');
   document.getElementById('voteRoomCode').textContent = roomCode;
   document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('voted', 'winner'));
-  // Reset vote counts
   ['roulette', 'slots', 'blackjack', 'poker', 'horseracing'].forEach(g => {
     const el = document.getElementById(`vote-${g}`);
     if (el) el.textContent = '0';
   });
+  const fill = document.getElementById('voteTimerFill');
+  const text = document.getElementById('voteTimerText');
+  if (fill) fill.style.width = '100%';
+  if (text) text.textContent = '';
 });
 
 // ── Game State Handler ──────────────────────────────────────────────────
@@ -226,11 +260,6 @@ socket.on('game:timer', ({ timer }) => {
 });
 
 socket.on('game:error', ({ message }) => showToast(message));
-
-// Client requests current game state (fallback for missed updates)
-socket.on('game:request-state', () => {
-  socket.emit('game:request-state');
-});
 
 // ── ROULETTE RENDERER ───────────────────────────────────────────────────
 

@@ -747,6 +747,16 @@ function broadcastPlayerHands(room) {
   }
 }
 
+function countVotes(room) {
+  const counts = { roulette: 0, slots: 0, blackjack: 0, poker: 0, horseracing: 0 };
+  if (room.votes) {
+    for (const g of Object.values(room.votes)) {
+      if (counts[g] !== undefined) counts[g]++;
+    }
+  }
+  return counts;
+}
+
 function finishVoting(room) {
   if (!room.votes || Object.keys(room.votes).length === 0) return;
 
@@ -852,9 +862,14 @@ io.on('connection', (socket) => {
   // Player signals everyone is in - start voting
   socket.on('lobby:ready', () => {
     if (!currentRoom) return;
+    // Clear any existing vote timer
+    if (currentRoom._voteTimerInterval) {
+      clearInterval(currentRoom._voteTimerInterval);
+      currentRoom._voteTimerInterval = null;
+    }
     currentRoom.votes = {};
     currentRoom.voteTimer = null;
-    currentRoom._voteTimerInterval = null;
+    currentRoom.readyPlayers = new Set();
     broadcastToRoom(currentRoom, 'lobby:vote-start');
   });
 
@@ -864,18 +879,16 @@ io.on('connection', (socket) => {
     if (!currentRoom.votes) currentRoom.votes = {};
     currentRoom.votes[playerId] = game;
 
-    // Count votes
-    const counts = { roulette: 0, slots: 0, blackjack: 0, poker: 0, horseracing: 0 };
-    for (const g of Object.values(currentRoom.votes)) {
-      if (counts[g] !== undefined) counts[g]++;
-    }
+    const counts = countVotes(currentRoom);
 
     // Start 30s timer on first vote
     if (Object.keys(currentRoom.votes).length === 1 && !currentRoom._voteTimerInterval) {
       currentRoom.voteTimer = 30;
       currentRoom._voteTimerInterval = setInterval(() => {
         currentRoom.voteTimer--;
-        broadcastToRoom(currentRoom, 'vote:update', { votes: counts, timer: currentRoom.voteTimer });
+        // Recount votes each tick so counts stay fresh
+        const freshCounts = countVotes(currentRoom);
+        broadcastToRoom(currentRoom, 'vote:update', { votes: freshCounts, timer: currentRoom.voteTimer });
         if (currentRoom.voteTimer <= 0) {
           clearInterval(currentRoom._voteTimerInterval);
           currentRoom._voteTimerInterval = null;
@@ -887,12 +900,41 @@ io.on('connection', (socket) => {
     broadcastToRoom(currentRoom, 'vote:update', { votes: counts, timer: currentRoom.voteTimer });
 
     // If everyone has voted, finish immediately
-    if (Object.keys(currentRoom.votes).length >= currentRoom.players.length) {
+    if (currentRoom.players.length > 0 && Object.keys(currentRoom.votes).length >= currentRoom.players.length) {
       if (currentRoom._voteTimerInterval) {
         clearInterval(currentRoom._voteTimerInterval);
         currentRoom._voteTimerInterval = null;
       }
       setTimeout(() => finishVoting(currentRoom), 1500);
+    }
+  });
+
+  // Player wants to end the current game and go back to lobby
+  socket.on('game:end-request', () => {
+    if (!currentRoom) return;
+    if (!currentRoom.readyPlayers) currentRoom.readyPlayers = new Set();
+    currentRoom.readyPlayers.add(playerId);
+    broadcastToRoom(currentRoom, 'lobby:ready-update', {
+      readyCount: currentRoom.readyPlayers.size,
+      totalCount: currentRoom.players.length,
+    });
+    // When all players are ready, end the game and go to voting
+    if (currentRoom.readyPlayers.size >= currentRoom.players.length) {
+      // Clear any game timers
+      if (currentRoom._timerInterval) {
+        clearInterval(currentRoom._timerInterval);
+        currentRoom._timerInterval = null;
+      }
+      currentRoom.currentGame = null;
+      currentRoom.gameState = null;
+      currentRoom.votes = {};
+      currentRoom.readyPlayers = new Set();
+      if (currentRoom._voteTimerInterval) {
+        clearInterval(currentRoom._voteTimerInterval);
+        currentRoom._voteTimerInterval = null;
+      }
+      currentRoom.voteTimer = null;
+      broadcastToRoom(currentRoom, 'lobby:vote-start');
     }
   });
 
@@ -955,8 +997,12 @@ io.on('connection', (socket) => {
     if (!currentRoom) return;
     currentRoom.players = currentRoom.players.filter(p => p.id !== playerId);
     if (currentRoom.tvSocket === socket) currentRoom.tvSocket = null;
-    if (currentRoom.players.length === 0) {
+    // Clean up from ready/vote sets
+    if (currentRoom.readyPlayers) currentRoom.readyPlayers.delete(playerId);
+    if (currentRoom.votes) delete currentRoom.votes[playerId];
+    if (currentRoom.players.length === 0 && !currentRoom.tvSocket) {
       if (currentRoom._timerInterval) clearInterval(currentRoom._timerInterval);
+      if (currentRoom._voteTimerInterval) clearInterval(currentRoom._voteTimerInterval);
       rooms.delete(currentRoom.code);
     } else {
       if (currentRoom.hostId === playerId && currentRoom.players.length > 0) {

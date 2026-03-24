@@ -958,6 +958,36 @@ body {
   font-weight: 800;
 }
 
+/* ── End Game ──────────────────────────────────────────────────────────── */
+.end-game-section {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-end-game {
+  padding: 12px;
+  font-size: 14px;
+  opacity: 0.7;
+  transition: all 0.2s;
+}
+
+.btn-end-game:hover { opacity: 1; }
+
+.btn-end-game.requested {
+  opacity: 0.5;
+  pointer-events: none;
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.end-game-status {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
 /* ── Game Views ───────────────────────────────────────────────────────── */
 .game-view { display: none; }
 .game-view.active { display: block; animation: fadeIn 0.4s ease; }

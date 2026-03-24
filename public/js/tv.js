@@ -283,17 +283,9 @@ socket.on('game:timer', ({ timer }) => {
   }
 });
 
-socket.on('game:ended', () => {
-  currentGame = null;
-  showTVScreen('tvVoting');
-  // Reset votes
-  document.querySelectorAll('.tv-vote-card').forEach(c => c.classList.remove('winner'));
-  ['roulette','slots','blackjack','poker','horseracing'].forEach(g => {
-    const count = document.getElementById(`tvVoteCount-${g}`);
-    const fill = document.getElementById(`tvVoteFill-${g}`);
-    if (count) count.textContent = '0';
-    if (fill) fill.style.width = '0%';
-  });
+socket.on('lobby:ready-update', ({ readyCount, totalCount }) => {
+  // Could show a "players ready" indicator on TV during games
+  // For now this is handled by the vote-start event when all ready
 });
 
 // ── Helpers ─────────────────────────────────────────────────────────────
