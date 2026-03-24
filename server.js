@@ -829,9 +829,12 @@ const games = {
 
           let finished = false;
           for (const horse of gs.horses) {
-            const baseSpeed = 2 + Math.random() * 4;
-            const oddsBonus = (12 - horse.baseOdds) * 0.15;
-            horse.position += baseSpeed + oddsBonus + (Math.random() * 2 - 1);
+            // High variance racing — odds give a slight edge, not a guarantee
+            // A 2:1 favourite only wins ~30-35% of the time, upsets are common
+            const randomBurst = Math.random() * 5; // big random component
+            const oddsEdge = (10 - horse.baseOdds) * 0.08; // tiny nudge from odds
+            const surge = Math.random() < 0.08 ? (Math.random() * 6) : 0; // random surge any horse can get
+            horse.position += 1.5 + randomBurst + oddsEdge + surge;
             if (horse.position > leaderPos) {
               leaderPos = horse.position;
               leaderId = horse.id;
