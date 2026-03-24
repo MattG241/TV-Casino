@@ -22,11 +22,18 @@ app.get('/api/tts', (req, res) => {
   if (!text) return res.status(400).send('No text');
   const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=en-AU&client=tw-ob&ttsspeed=1`;
   const headers = { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://translate.google.com/' };
-  https.get(url, { headers }, (upstream) => {
-    if (upstream.statusCode !== 200) return res.status(502).send('TTS upstream error');
+  const request = https.get(url, { headers, timeout: 5000 }, (upstream) => {
+    if (upstream.statusCode !== 200) {
+      upstream.resume(); // drain
+      if (!res.headersSent) res.status(502).send('TTS upstream error');
+      return;
+    }
     res.set({ 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=3600' });
     upstream.pipe(res);
-  }).on('error', () => res.status(502).send('TTS fetch failed'));
+    upstream.on('error', () => { if (!res.headersSent) res.status(502).end(); });
+  });
+  request.on('error', () => { if (!res.headersSent) res.status(502).send('TTS fetch failed'); });
+  request.on('timeout', () => { request.destroy(); if (!res.headersSent) res.status(504).send('TTS timeout'); });
 });
 
 // ── Game State ──────────────────────────────────────────────────────────────
@@ -321,7 +328,7 @@ const games = {
         broadcastToRoom(room, 'players:update', playerList(room));
 
         setTimeout(() => {
-          if (room.gameState === spinState && room.currentGame === 'roulette') {
+          if (rooms.has(room.code) && room.gameState === spinState && room.currentGame === 'roulette') {
             games.roulette.start(room);
           }
         }, 5000);
@@ -456,6 +463,7 @@ const games = {
     hit(room, playerId) {
       const gs = room.gameState;
       if (!gs || gs.phase !== 'playing' || gs.turnOrder[gs.currentTurn] !== playerId) return;
+      if (gs.deck.length === 0) gs.deck = createDeck();
       gs.hands[playerId].push(gs.deck.pop());
       if (handValue(gs.hands[playerId]) > 21) {
         gs.results[playerId] = 'bust';
@@ -482,6 +490,7 @@ const games = {
       if (!player || player.chips < gs.bets[playerId]) return;
       player.chips -= gs.bets[playerId];
       gs.bets[playerId] *= 2;
+      if (gs.deck.length === 0) gs.deck = createDeck();
       gs.hands[playerId].push(gs.deck.pop());
       if (handValue(gs.hands[playerId]) > 21) {
         gs.results[playerId] = 'bust';
@@ -497,6 +506,7 @@ const games = {
 
       const dealerDraw = () => {
         if (handValue(gs.dealerHand) < 17) {
+          if (gs.deck.length === 0) gs.deck = createDeck();
           gs.dealerHand.push(gs.deck.pop());
           broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(gs, true) });
           setTimeout(dealerDraw, 1000);
@@ -536,7 +546,7 @@ const games = {
       broadcastToRoom(room, 'players:update', playerList(room));
 
       setTimeout(() => {
-        if (room.currentGame === 'blackjack') games.blackjack.start(room);
+        if (rooms.has(room.code) && room.currentGame === 'blackjack') games.blackjack.start(room);
       }, 5000);
     },
   },
@@ -733,7 +743,7 @@ const games = {
       broadcastToRoom(room, 'players:update', playerList(room));
 
       setTimeout(() => {
-        if (room.currentGame === 'poker') games.poker.start(room);
+        if (rooms.has(room.code) && room.currentGame === 'poker') games.poker.start(room);
       }, 5000);
     },
   },
@@ -950,19 +960,24 @@ const games = {
         if (leaderId !== lastLeaderId && lastLeaderId !== null) {
           leadChangeCount++;
           const newLeader = gs.horses.find(h => h.id === leaderId);
-          gs.commentary = `${newLeader.name} takes the lead!`;
-          gs.speak = `${newLeader.name} takes the lead!`;
+          if (newLeader) {
+            gs.commentary = `${newLeader.name} takes the lead!`;
+            gs.speak = `${newLeader.name} takes the lead!`;
+          }
         }
         lastLeaderId = leaderId;
 
         // Dynamic commentary — every ~3 seconds regardless of race length
-        const avgPos = gs.horses.filter(h => !h.scratched).reduce((s, h) => s + h.position, 0) / gs.horses.filter(h => !h.scratched).length;
+        const activeHorses = gs.horses.filter(h => !h.scratched);
+        const avgPos = activeHorses.length > 0 ? activeHorses.reduce((s, h) => s + h.position, 0) / activeHorses.length : 0;
         const commentInterval = 30; // every 30 ticks = 3 seconds
         if (tickCount % commentInterval === Math.floor(commentInterval / 2) && !gs.speak) {
           const leader = gs.horses.find(h => h.id === leaderId);
-          const lines = games.horseracing._getCommentary(avgPos, leader, gap, gs.horses);
-          gs.commentary = lines.text;
-          if (lines.speak) gs.speak = lines.speak;
+          if (leader) {
+            const lines = games.horseracing._getCommentary(avgPos, leader, gap, gs.horses);
+            gs.commentary = lines.text;
+            if (lines.speak) gs.speak = lines.speak;
+          }
         } else if (tickCount % 5 === 0) {
           gs.speak = null; // clear speak so it doesn't repeat
         }
@@ -975,8 +990,10 @@ const games = {
           room._raceInterval = null;
           gs.phase = 'result';
           const winHorse = gs.horses.find(h => h.id === gs.winner);
-          gs.commentary = `${winHorse.name} wins the race!`;
-          gs.speak = `And it's ${winHorse.name} who takes the victory at odds of ${winHorse.lockedOdds} to one!`;
+          if (winHorse) {
+            gs.commentary = `${winHorse.name} wins the race!`;
+            gs.speak = `And it's ${winHorse.name} who takes the victory at odds of ${winHorse.lockedOdds} to one!`;
+          }
 
           // Determine places for all horses
           const sorted = [...gs.horses].sort((a, b) => b.position - a.position);
@@ -984,9 +1001,9 @@ const games = {
 
           for (const [pid, bet] of Object.entries(gs.bets)) {
             const player = room.players.find(p => p.id === pid);
-            if (!player) continue;
+            if (!player || !winHorse) continue;
             if (bet.horseId === gs.winner) {
-              const payoutOdds = winHorse.lockedOdds || winHorse.odds;
+              const payoutOdds = winHorse.lockedOdds || winHorse.odds || 1;
               player.chips += Math.round(bet.amount * payoutOdds);
               bet.won = true;
               bet.winAmount = Math.round(bet.amount * payoutOdds);
@@ -996,7 +1013,7 @@ const games = {
           broadcastToRoom(room, 'players:update', playerList(room));
 
           setTimeout(() => {
-            if (room.currentGame === 'horseracing') games.horseracing.start(room);
+            if (rooms.has(room.code) && room.currentGame === 'horseracing') games.horseracing.start(room);
           }, 8000);
         }
       }, 100);
@@ -1049,48 +1066,39 @@ function sanitizeBJ(gs, showDealer = false) {
 
 function broadcastPlayerHands(room) {
   const gs = room.gameState;
+  if (!gs) return;
+  const isReveal = gs.phase === 'result' || gs.phase === 'showdown';
+  const base = {
+    phase: gs.phase,
+    community: gs.community,
+    pot: gs.pot,
+    currentBet: gs.currentBet,
+    currentTurn: gs.currentTurn,
+    turnOrder: gs.turnOrder,
+    activePlayers: gs.activePlayers,
+    foldedPlayers: gs.foldedPlayers,
+    roundBets: gs.roundBets,
+    winner: gs.winner,
+    allHands: isReveal ? gs.hands : undefined,
+    dealerIdx: gs.dealerIdx,
+  };
   // Send each player only their own hand
   room.players.forEach(p => {
-    p.socket.emit('game:state', {
-      game: 'poker',
-      state: {
-        phase: gs.phase,
-        community: gs.community,
-        pot: gs.pot,
-        currentBet: gs.currentBet,
-        currentTurn: gs.currentTurn,
-        turnOrder: gs.turnOrder,
-        activePlayers: gs.activePlayers,
-        foldedPlayers: gs.foldedPlayers,
-        roundBets: gs.roundBets,
-        myHand: gs.hands[p.id] || null,
-        winner: gs.winner,
-        allHands: gs.phase === 'result' || gs.phase === 'showdown' ? gs.hands : undefined,
-        dealerIdx: gs.dealerIdx,
-      },
-    });
+    try {
+      if (p.socket && p.socket.connected) {
+        p.socket.emit('game:state', { game: 'poker', state: { ...base, myHand: gs.hands[p.id] || null } });
+      }
+    } catch (e) {}
   });
   // TV gets all hands during showdown, otherwise just community
-  if (room.tvSocket) {
-    room.tvSocket.emit('game:state', {
-      game: 'poker',
-      state: {
-        phase: gs.phase,
-        community: gs.community,
-        pot: gs.pot,
-        currentBet: gs.currentBet,
-        currentTurn: gs.currentTurn,
-        turnOrder: gs.turnOrder,
-        activePlayers: gs.activePlayers,
-        foldedPlayers: gs.foldedPlayers,
-        roundBets: gs.roundBets,
-        allHands: gs.phase === 'result' || gs.phase === 'showdown' ? gs.hands : undefined,
-        handBacks: Object.fromEntries(gs.turnOrder.map(pid => [pid, gs.hands[pid]?.length || 0])),
-        winner: gs.winner,
-        dealerIdx: gs.dealerIdx,
-      },
-    });
-  }
+  try {
+    if (room.tvSocket && room.tvSocket.connected) {
+      room.tvSocket.emit('game:state', {
+        game: 'poker',
+        state: { ...base, handBacks: Object.fromEntries(gs.turnOrder.map(pid => [pid, gs.hands[pid]?.length || 0])) },
+      });
+    }
+  } catch (e) {}
 }
 
 function countVotes(room) {
@@ -1127,6 +1135,7 @@ function finishVoting(room) {
 
   // Start the game after a short delay
   setTimeout(() => {
+    if (!rooms.has(room.code)) return;
     room.currentGame = winningGame;
     room.votes = {};
     broadcastToRoom(room, 'game:started', { game: winningGame });
@@ -1139,6 +1148,11 @@ function startBettingTimer(room, seconds) {
   if (room._timerInterval) clearInterval(room._timerInterval);
   let timer = seconds;
   const interval = setInterval(() => {
+    if (!room.gameState || !rooms.has(room.code)) {
+      clearInterval(interval);
+      room._timerInterval = null;
+      return;
+    }
     timer--;
     room.gameState.timer = timer;
     broadcastToRoom(room, 'game:timer', { timer });
@@ -1158,7 +1172,10 @@ io.on('connection', (socket) => {
   let currentRoom = null;
   let playerId = null;
 
-  socket.on('room:create', ({ playerName, avatar }) => {
+  socket.on('room:create', (data) => {
+    if (!data || typeof data !== 'object') return;
+    const { playerName, avatar } = data;
+    if (typeof playerName !== 'string') return;
     const room = createRoom(playerName);
     playerId = uuidv4();
     const player = { id: playerId, name: playerName, chips: 1000, socket, avatar: avatar || 0 };
@@ -1168,7 +1185,9 @@ io.on('connection', (socket) => {
     socket.emit('room:created', { code: room.code, playerId, players: playerList(room) });
   });
 
-  socket.on('room:join', ({ code, playerName, avatar }) => {
+  socket.on('room:join', (data) => {
+    if (!data || typeof data !== 'object') return;
+    const { code, playerName, avatar } = data;
     const room = getRoom(code);
     if (!room) return socket.emit('room:error', { message: 'Room not found' });
     if (room.players.length >= 8) return socket.emit('room:error', { message: 'Room is full' });
@@ -1185,7 +1204,9 @@ io.on('connection', (socket) => {
   });
 
   // Rejoin — reconnect a returning player to their existing session
-  socket.on('room:rejoin', ({ code, existingPlayerId }) => {
+  socket.on('room:rejoin', (data) => {
+    if (!data || typeof data !== 'object') return;
+    const { code, existingPlayerId } = data;
     const room = getRoom(code);
     if (!room) return socket.emit('room:error', { message: 'Room not found' });
     const existing = room.players.find(p => p.id === existingPlayerId);
@@ -1214,7 +1235,9 @@ io.on('connection', (socket) => {
     socket.emit('tv:created', { code: room.code, players: playerList(room) });
   });
 
-  socket.on('tv:connect', ({ code }) => {
+  socket.on('tv:connect', (data) => {
+    if (!data || typeof data !== 'object') return;
+    const { code } = data;
     const room = getRoom(code);
     if (!room) return socket.emit('room:error', { message: 'Room not found' });
     room.tvSocket = socket;
@@ -1241,7 +1264,9 @@ io.on('connection', (socket) => {
   });
 
   // Player votes for a game
-  socket.on('game:vote', ({ game }) => {
+  socket.on('game:vote', (data) => {
+    if (!data || typeof data !== 'object') return;
+    const { game } = data;
     if (!currentRoom || !game) return;
     if (!currentRoom.votes) currentRoom.votes = {};
     currentRoom.votes[playerId] = game;
@@ -1250,16 +1275,17 @@ io.on('connection', (socket) => {
 
     // Start 30s timer on first vote
     if (Object.keys(currentRoom.votes).length === 1 && !currentRoom._voteTimerInterval) {
-      currentRoom.voteTimer = 30;
-      currentRoom._voteTimerInterval = setInterval(() => {
-        currentRoom.voteTimer--;
-        // Recount votes each tick so counts stay fresh
-        const freshCounts = countVotes(currentRoom);
-        broadcastToRoom(currentRoom, 'vote:update', { votes: freshCounts, timer: currentRoom.voteTimer });
-        if (currentRoom.voteTimer <= 0) {
-          clearInterval(currentRoom._voteTimerInterval);
-          currentRoom._voteTimerInterval = null;
-          finishVoting(currentRoom);
+      const voteRoom = currentRoom; // capture reference
+      voteRoom.voteTimer = 30;
+      voteRoom._voteTimerInterval = setInterval(() => {
+        if (!rooms.has(voteRoom.code)) { clearInterval(voteRoom._voteTimerInterval); return; }
+        voteRoom.voteTimer--;
+        const freshCounts = countVotes(voteRoom);
+        broadcastToRoom(voteRoom, 'vote:update', { votes: freshCounts, timer: voteRoom.voteTimer });
+        if (voteRoom.voteTimer <= 0) {
+          clearInterval(voteRoom._voteTimerInterval);
+          voteRoom._voteTimerInterval = null;
+          finishVoting(voteRoom);
         }
       }, 1000);
     }
@@ -1272,7 +1298,8 @@ io.on('connection', (socket) => {
         clearInterval(currentRoom._voteTimerInterval);
         currentRoom._voteTimerInterval = null;
       }
-      setTimeout(() => finishVoting(currentRoom), 1500);
+      const finishRoom = currentRoom;
+      setTimeout(() => { if (rooms.has(finishRoom.code)) finishVoting(finishRoom); }, 1500);
     }
   });
 
@@ -1315,14 +1342,18 @@ io.on('connection', (socket) => {
   });
 
   // TV selects game (when TV is host) - kept as fallback
-  socket.on('tv:select-game', ({ game }) => {
+  socket.on('tv:select-game', (data) => {
+    if (!data || typeof data !== 'object') return;
+    const { game } = data;
     if (!currentRoom || currentRoom.tvHostSocket !== socket) return;
     currentRoom.currentGame = game;
     broadcastToRoom(currentRoom, 'game:started', { game });
     if (games[game]) games[game].start(currentRoom);
   });
 
-  socket.on('game:select', ({ game }) => {
+  socket.on('game:select', (data) => {
+    if (!data || typeof data !== 'object') return;
+    const { game } = data;
     if (!currentRoom || playerId !== currentRoom.hostId) return;
     currentRoom.currentGame = game;
     broadcastToRoom(currentRoom, 'game:started', { game });
@@ -1331,6 +1362,7 @@ io.on('connection', (socket) => {
 
   // Game actions
   socket.on('roulette:bet', (bet) => {
+    if (!bet || typeof bet !== 'object') return;
     if (currentRoom?.currentGame === 'roulette') games.roulette.placeBet(currentRoom, playerId, bet);
   });
 
@@ -1341,12 +1373,14 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('slots:spin', ({ amount }) => {
-    if (currentRoom?.currentGame === 'slots') games.slots.spin(currentRoom, playerId, amount);
+  socket.on('slots:spin', (data) => {
+    if (!data || typeof data !== 'object') return;
+    if (currentRoom?.currentGame === 'slots') games.slots.spin(currentRoom, playerId, data.amount);
   });
 
-  socket.on('blackjack:bet', ({ amount }) => {
-    if (currentRoom?.currentGame === 'blackjack') games.blackjack.placeBet(currentRoom, playerId, amount);
+  socket.on('blackjack:bet', (data) => {
+    if (!data || typeof data !== 'object') return;
+    if (currentRoom?.currentGame === 'blackjack') games.blackjack.placeBet(currentRoom, playerId, data.amount);
   });
 
   socket.on('blackjack:hit', () => {
@@ -1361,12 +1395,14 @@ io.on('connection', (socket) => {
     if (currentRoom?.currentGame === 'blackjack') games.blackjack.doubleDown(currentRoom, playerId);
   });
 
-  socket.on('poker:action', ({ action, amount }) => {
-    if (currentRoom?.currentGame === 'poker') games.poker.action(currentRoom, playerId, action, amount);
+  socket.on('poker:action', (data) => {
+    if (!data || typeof data !== 'object') return;
+    if (currentRoom?.currentGame === 'poker') games.poker.action(currentRoom, playerId, data.action, data.amount);
   });
 
-  socket.on('horseracing:bet', ({ horseId, amount }) => {
-    if (currentRoom?.currentGame === 'horseracing') games.horseracing.placeBet(currentRoom, playerId, horseId, amount);
+  socket.on('horseracing:bet', (data) => {
+    if (!data || typeof data !== 'object') return;
+    if (currentRoom?.currentGame === 'horseracing') games.horseracing.placeBet(currentRoom, playerId, data.horseId, data.amount);
   });
 
   socket.on('disconnect', () => {
@@ -1405,6 +1441,25 @@ io.on('connection', (socket) => {
     }
   });
 });
+
+// ── Periodic cleanup — prevent memory leaks from abandoned rooms ─────────────
+setInterval(() => {
+  for (const [code, room] of rooms) {
+    const hasTV = room.tvSocket && room.tvSocket.connected;
+    const hasPlayers = room.players.some(p => p.socket && p.socket.connected);
+    if (!hasTV && !hasPlayers) {
+      // Clean up all intervals
+      if (room._timerInterval) clearInterval(room._timerInterval);
+      if (room._voteTimerInterval) clearInterval(room._voteTimerInterval);
+      if (room._raceInterval) clearInterval(room._raceInterval);
+      if (room._oddsInterval) clearInterval(room._oddsInterval);
+      clearTimeout(room._betBroadcastTimeout);
+      room.players.forEach(p => { if (p._disconnectTimer) clearTimeout(p._disconnectTimer); });
+      rooms.delete(code);
+      console.log(`[CLEANUP] Room ${code} removed (no connections)`);
+    }
+  }
+}, 30000); // every 30 seconds
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
