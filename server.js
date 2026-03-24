@@ -827,17 +827,37 @@ const games = {
         const jockeyIdx = this._JOCKEY_NAMES.indexOf(jockey);
         const jockeySkill = jockeyIdx >= 0 ? 0.85 + (1 - jockeyIdx / this._JOCKEY_NAMES.length) * 0.15 : 0.8;
 
+        // Generate weight (54-62kg based on odds — favourites carry more weight)
+        const baseWeight = 54 + Math.round((10 - Math.min(baseOdds[i], 10)) * 0.8);
+        const weight = baseWeight + Math.floor(Math.random() * 3) - 1;
+
+        // Generate career stats based on odds tier
+        const careerStarts = 8 + Math.floor(Math.random() * 30);
+        let winRate;
+        if (baseOdds[i] < 5) winRate = 0.22 + Math.random() * 0.18;
+        else if (baseOdds[i] < 10) winRate = 0.12 + Math.random() * 0.12;
+        else winRate = 0.03 + Math.random() * 0.08;
+        const careerWins = Math.max(0, Math.round(careerStarts * winRate));
+        const careerSeconds = Math.max(0, Math.round(careerStarts * (winRate * 0.7 + Math.random() * 0.05)));
+        const careerThirds = Math.max(0, Math.round(careerStarts * (winRate * 0.5 + Math.random() * 0.04)));
+
+        // Place odds (~35% of win odds, min 1.10)
+        const placeOdds = Math.round(Math.max(1.1, baseOdds[i] * 0.35) * 100) / 100;
+
         return {
           id: i + 1,
           name: generateHorseName(usedNames),
           color,
           baseOdds: baseOdds[i],
           odds: baseOdds[i],
+          placeOdds,
           position: 0,
           gateLoaded: false,
           scratched: false,
           style,
           styleDesc: this._STYLES[style].desc,
+          weight,
+          career: { starts: careerStarts, wins: careerWins, seconds: careerSeconds, thirds: careerThirds },
           stamina: 0.75 + Math.random() * 0.5,
           energy: 1.0,
           momentum: 0,
@@ -863,6 +883,33 @@ const games = {
         };
       });
 
+      // ── FORM GUIDE — carry race history between races ──
+      if (!room._horseFormHistory) room._horseFormHistory = {};
+      for (const horse of horses) {
+        const existing = room._horseFormHistory[horse.name];
+        if (existing) {
+          horse.form = existing.slice(-5);
+        } else {
+          const formLen = 2 + Math.floor(Math.random() * 3);
+          horse.form = [];
+          for (let f = 0; f < formLen; f++) {
+            if (horse.baseOdds < 5) horse.form.push([1,1,2,2,3,4][Math.floor(Math.random() * 6)]);
+            else if (horse.baseOdds < 10) horse.form.push([2,3,4,5,6,7][Math.floor(Math.random() * 6)]);
+            else horse.form.push([3,5,6,7,8,9,10][Math.floor(Math.random() * 7)]);
+          }
+        }
+        const recentWins = horse.form.filter(f => f <= 2).length;
+        horse.formBonus = recentWins * 0.015;
+      }
+
+      // ── BARRIER DRAW ──
+      const barriers = Array.from({length: numHorses}, (_, i) => i + 1);
+      for (let i = barriers.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [barriers[i], barriers[j]] = [barriers[j], barriers[i]];
+      }
+      horses.forEach((h, i) => { h.barrier = barriers[i]; });
+
       // Real-ish race duration scaling
       const raceDuration = Math.round(distance * 0.015);
       const totalTicks = raceDuration * 10;
@@ -879,6 +926,21 @@ const games = {
       ];
       const trackCondition = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
 
+      // ── TRACK BIAS ──
+      const BIASES = [
+        { name: 'Inside', factor: 0.03 },
+        { name: 'Neutral', factor: 0 },
+        { name: 'Neutral', factor: 0 },
+        { name: 'Outside', factor: -0.02 },
+      ];
+      const trackBias = BIASES[Math.floor(Math.random() * BIASES.length)];
+
+      const midBarrier = (numHorses + 1) / 2;
+      for (const horse of horses) {
+        const barrierPosition = (midBarrier - horse.barrier) / midBarrier;
+        horse.barrierEdge = barrierPosition * trackBias.factor;
+      }
+
       room.gameState = {
         phase: 'betting',
         horses,
@@ -892,8 +954,9 @@ const games = {
         trackCondition: trackCondition.name,
         trackFactor: trackCondition.factor,
         trackFavours: trackCondition.favours,
+        trackBias: trackBias.name,
         commentary: `Race ${room._raceNumber} — ${distance}m — ${trackCondition.name} — ${horses.filter(h=>!h.scratched).length} runners`,
-        speak: `Race ${room._raceNumber}. ${distance} meters. Track rated ${trackCondition.name.replace(/(\d)/, ' $1')}. ${numHorses} runners. Place your bets now.`,
+        speak: `Race ${room._raceNumber}. ${distance} meters. Track rated ${trackCondition.name.replace(/(\d)/, ' $1')}. ${numHorses} runners.${trackBias.name !== 'Neutral' ? ` Track bias favouring ${trackBias.name.toLowerCase()} runners.` : ''} Place your bets now.`,
       };
 
       // Random late scratching (15% chance per race, max 1-2 horses, never scratch all)
@@ -938,20 +1001,41 @@ const games = {
           // Gentler random drift (±0.3 instead of ±0.6)
           const drift = (Math.random() - 0.5) * 0.3;
           horse.odds = Math.round(Math.max(1.5, Math.min(50, horse.odds + drift)) * 10) / 10;
+          horse.placeOdds = Math.round(Math.max(1.1, horse.odds * 0.35) * 100) / 100;
         }
         recalculateOdds(room.gameState.horses, room.gameState.bets);
         broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       }, 2000);
     },
 
-    placeBet(room, playerId, horseId, amount) {
+    placeBet(room, playerId, horseId, amount, betType, trifectaSelections) {
       if (!room.gameState || room.gameState.phase !== 'betting') return;
       const player = room.players.find(p => p.id === playerId);
       amount = parseInt(amount);
       if (!player || !amount || amount <= 0 || amount > player.chips) return;
       if (room.gameState.bets[playerId]) return;
-      player.chips -= amount;
-      room.gameState.bets[playerId] = { horseId, amount };
+
+      betType = betType || 'win';
+      const horse = room.gameState.horses.find(h => h.id === horseId);
+
+      if (betType === 'trifecta') {
+        if (!trifectaSelections || trifectaSelections.length !== 3) return;
+        if (new Set(trifectaSelections).size !== 3) return;
+        if (!trifectaSelections.every(id => room.gameState.horses.find(h => h.id === id && !h.scratched))) return;
+        const triH = trifectaSelections.map(id => room.gameState.horses.find(h => h.id === id));
+        const trifectaOdds = Math.round(triH[0].odds * triH[1].odds * triH[2].odds * 0.08 * 100) / 100;
+        player.chips -= amount;
+        room.gameState.bets[playerId] = { horseId: trifectaSelections[0], amount, betType: 'trifecta', trifecta: trifectaSelections, lockedAtOdds: trifectaOdds };
+      } else if (betType === 'place') {
+        const lockedAtOdds = horse ? horse.placeOdds : 1;
+        player.chips -= amount;
+        room.gameState.bets[playerId] = { horseId, amount, betType: 'place', lockedAtOdds };
+      } else {
+        const lockedAtOdds = horse ? horse.odds : 1;
+        player.chips -= amount;
+        room.gameState.bets[playerId] = { horseId, amount, betType: 'win', lockedAtOdds };
+      }
+
       recalculateOdds(room.gameState.horses, room.gameState.bets);
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       broadcastToRoom(room, 'players:update', playerList(room));
@@ -1220,6 +1304,12 @@ const games = {
           // ── JOCKEY SKILL BONUS — better jockeys extract more from the horse ──
           const jockeyBonus = spd * (horse.jockeySkill - 0.8) * 0.15;
 
+          // ── FORM FITNESS BONUS ──
+          const formBonus = (horse.formBonus || 0) * spd;
+
+          // ── BARRIER/TRACK BIAS EDGE ──
+          const barrierBonus = raceProgress < 0.3 ? (horse.barrierEdge || 0) * spd : (horse.barrierEdge || 0) * spd * 0.3;
+
           // ── TRAFFIC PENALTY — running wide costs ground ──
           const lanePenalty = Math.abs(ai.lane) * spd * 0.04;
 
@@ -1227,7 +1317,7 @@ const games = {
           const nervePenalty = ai.nervous * spd * 0.1;
 
           // ── MOMENTUM — smooth acceleration/deceleration ──
-          const targetSpeed = styledSpeed + randomVar + oddsEdge + jockeyBonus - lanePenalty - nervePenalty;
+          const targetSpeed = styledSpeed + randomVar + oddsEdge + jockeyBonus + formBonus + barrierBonus - lanePenalty - nervePenalty;
           horse.momentum += (targetSpeed - horse.momentum) * 0.25;
 
           // ── SURGE — dramatic finishing kick when jockey asks ──
@@ -1326,6 +1416,14 @@ const games = {
           gs.places = finalSorted.map(h => h.id);
           gs.margins = finalSorted.map((h, i) => i === 0 ? 0 : +(finalSorted[0].position - h.position).toFixed(1));
 
+          // Save form history for next race
+          if (!room._horseFormHistory) room._horseFormHistory = {};
+          finalSorted.forEach((h, pos) => {
+            if (!room._horseFormHistory[h.name]) room._horseFormHistory[h.name] = [];
+            room._horseFormHistory[h.name].push(pos + 1);
+            if (room._horseFormHistory[h.name].length > 5) room._horseFormHistory[h.name].shift();
+          });
+
           if (winHorse) {
             const second = finalSorted[1];
             const margin = gs.margins[1] || 0;
@@ -1335,14 +1433,35 @@ const games = {
             gs.speak = `And it's ${winHorse.name} who takes the victory ${marginDesc} at odds of ${(winHorse.lockedOdds||winHorse.odds).toFixed(1)} to one!${jockeyCredit}${second ? ` ${second.name} in second.` : ''}`;
           }
 
+          // Determine top 3 for place/trifecta payouts
+          const top3Ids = finalSorted.slice(0, 3).map(h => h.id);
+
           for (const [pid, bet] of Object.entries(gs.bets)) {
             const player = room.players.find(p => p.id === pid);
-            if (!player || !winHorse) continue;
-            if (bet.horseId === gs.winner) {
-              const payoutOdds = winHorse.lockedOdds || winHorse.odds || 1;
-              player.chips += Math.round(bet.amount * payoutOdds);
-              bet.won = true;
-              bet.winAmount = Math.round(bet.amount * payoutOdds);
+            if (!player) continue;
+
+            if (bet.betType === 'trifecta') {
+              if (bet.trifecta && bet.trifecta[0] === top3Ids[0] && bet.trifecta[1] === top3Ids[1] && bet.trifecta[2] === top3Ids[2]) {
+                const payoutOdds = bet.lockedAtOdds || 50;
+                player.chips += Math.round(bet.amount * payoutOdds);
+                bet.won = true;
+                bet.winAmount = Math.round(bet.amount * payoutOdds);
+              }
+            } else if (bet.betType === 'place') {
+              if (top3Ids.includes(bet.horseId)) {
+                const payoutOdds = bet.lockedAtOdds || 1.5;
+                player.chips += Math.round(bet.amount * payoutOdds);
+                bet.won = true;
+                bet.winAmount = Math.round(bet.amount * payoutOdds);
+              }
+            } else {
+              // Win bet
+              if (winHorse && bet.horseId === gs.winner) {
+                const payoutOdds = bet.lockedAtOdds || winHorse.lockedOdds || winHorse.odds || 1;
+                player.chips += Math.round(bet.amount * payoutOdds);
+                bet.won = true;
+                bet.winAmount = Math.round(bet.amount * payoutOdds);
+              }
             }
           }
           broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
@@ -1800,7 +1919,7 @@ io.on('connection', (socket) => {
 
   socket.on('horseracing:bet', (data) => {
     if (!data || typeof data !== 'object') return;
-    if (currentRoom?.currentGame === 'horseracing') games.horseracing.placeBet(currentRoom, playerId, data.horseId, data.amount);
+    if (currentRoom?.currentGame === 'horseracing') games.horseracing.placeBet(currentRoom, playerId, data.horseId, data.amount, data.betType, data.trifecta);
   });
 
   socket.on('disconnect', () => {
