@@ -248,6 +248,11 @@ function renderRoulette(state) {
         <div style="font-size:20px;margin-top:16px;color:var(--gold)">Spinning...</div>
       </div>
     `;
+    // Fallback: if stuck on spinning for 7s, request fresh state from server
+    clearTimeout(window._spinTimeout);
+    window._spinTimeout = setTimeout(() => {
+      socket.emit('game:request-state');
+    }, 7000);
   } else if (state.phase === 'result' && state.result) {
     const myBets = state.bets[myId] || [];
     const totalWin = myBets.reduce((s, b) => s + (b.winAmount || 0), 0);

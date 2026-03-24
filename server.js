@@ -159,16 +159,26 @@ const games = {
     spin(room) {
       if (room.gameState.phase === 'spinning') return; // prevent double-spin
       room.gameState.phase = 'spinning';
-      room.gameState.timer = null; // clear timer display
+      room.gameState.timer = null;
       const number = Math.floor(Math.random() * 37); // 0-36
       const RED = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
       const color = number === 0 ? 'green' : RED.includes(number) ? 'red' : 'black';
-      room.gameState.result = { number, color };
+      console.log(`[ROULETTE] Spinning... result will be ${number} ${color}`);
       broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
 
+      // Store the spin result and a reference to this gameState
+      const spinState = room.gameState;
+
       setTimeout(() => {
-        if (room.gameState.phase !== 'spinning') return; // already moved on
+        // Use the stored reference to ensure we update the right state
+        if (room.gameState !== spinState) {
+          console.log('[ROULETTE] gameState was replaced, skipping result');
+          return;
+        }
+        console.log(`[ROULETTE] Showing result: ${number} ${color}`);
         room.gameState.phase = 'result';
+        room.gameState.result = { number, color };
+
         // Calculate winnings
         for (const [pid, bets] of Object.entries(room.gameState.bets)) {
           const player = room.players.find(p => p.id === pid);
@@ -193,8 +203,13 @@ const games = {
         if (room.gameState.history.length > 20) room.gameState.history.pop();
         broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
         broadcastToRoom(room, 'players:update', playerList(room));
+        console.log(`[ROULETTE] Result broadcast complete. Next round in 5s.`);
 
-        setTimeout(() => games.roulette.start(room), 5000);
+        setTimeout(() => {
+          if (room.gameState === spinState) {
+            games.roulette.start(room);
+          }
+        }, 5000);
       }, 4000);
     },
   },
@@ -803,6 +818,13 @@ io.on('connection', (socket) => {
   // Game actions
   socket.on('roulette:bet', (bet) => {
     if (currentRoom?.currentGame === 'roulette') games.roulette.placeBet(currentRoom, playerId, bet);
+  });
+
+  // Client requests current game state (fallback for missed updates)
+  socket.on('game:request-state', () => {
+    if (currentRoom?.currentGame && currentRoom.gameState) {
+      socket.emit('game:state', { game: currentRoom.currentGame, state: currentRoom.gameState });
+    }
   });
 
   socket.on('slots:spin', ({ amount }) => {

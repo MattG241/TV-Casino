@@ -313,6 +313,11 @@ function renderTVRoulette(state) {
         </div>
       </div>
     `;
+    // Fallback: if stuck on spinning for 7s, request fresh state
+    clearTimeout(window._tvSpinTimeout);
+    window._tvSpinTimeout = setTimeout(() => {
+      socket.emit('game:request-state');
+    }, 7000);
   } else if (state.phase === 'result' && state.result) {
     if (lastRoulettePhase !== 'result') {
       CasinoAudio.ballLand();
