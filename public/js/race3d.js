@@ -21,6 +21,8 @@ const Race3D = (() => {
   const STRAIGHT = 70;
   const RADIUS = 28;
   const TRACK_W = 20;
+  const GATE_T = 0.96;    // Starting gate position on track (96% around)
+  const LAP_DIST = 1.04;  // Distance from gate around to finish (gate→finish = 0.04, full loop)
 
   let trackPoints = [];
   let trackTangents = [];
@@ -534,15 +536,57 @@ const Race3D = (() => {
       group._fallbackLegs = legs;
     }
 
+    // ── Saddle cloth number (floating above horse) ──
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx2d = canvas.getContext('2d');
+    // Saddle cloth background (horse color)
+    ctx2d.fillStyle = color;
+    ctx2d.beginPath();
+    ctx2d.arc(32, 32, 28, 0, Math.PI * 2);
+    ctx2d.fill();
+    // White border
+    ctx2d.strokeStyle = '#ffffff';
+    ctx2d.lineWidth = 3;
+    ctx2d.stroke();
+    // Number text
+    ctx2d.fillStyle = '#ffffff';
+    ctx2d.font = 'bold 32px Arial';
+    ctx2d.textAlign = 'center';
+    ctx2d.textBaseline = 'middle';
+    ctx2d.fillText(String(laneIndex + 1), 32, 33);
+
+    const numberTex = new THREE.CanvasTexture(canvas);
+    const numberSprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: numberTex, transparent: true })
+    );
+    numberSprite.scale.set(1.8, 1.8, 1);
+    numberSprite.position.set(0, 4.2, 0);
+    group.add(numberSprite);
+    group._numberSprite = numberSprite;
+
+    // ── Highlight ring (for backed horses) — hidden by default ──
+    const ringGeo = new THREE.RingGeometry(1.8, 2.2, 24);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xffd700, transparent: true, opacity: 0,
+      side: THREE.DoubleSide,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.05;
+    group.add(ring);
+    group._highlightRing = ring;
+
     // Lane position
     const laneW = TRACK_W - 4;
     group._laneOffset = -laneW / 2 + (laneIndex / Math.max(totalLanes - 1, 1)) * laneW;
     group._gallopPhase = Math.random() * Math.PI * 2;
-    group._trackT = 0.96;
+    group._trackT = GATE_T;
     group._paradeT = 0.90 + (laneIndex * 0.008);
     group._mixer = mixer;
     group._action = action;
     group._animSpeed = 0;
+    group._horseIndex = laneIndex;
     scene.add(group);
     return group;
   }
@@ -599,9 +643,15 @@ const Race3D = (() => {
     }
   }
 
+  // Backed horse IDs (horses players have bet on) — set by TV renderer
+  let backedHorseIds = [];
+  let photoFinishMode = false;
+
   // ── Main update ────────────────────────────────────────────────────────
-  function updateHorses(horsesData, phase) {
+  function updateHorses(horsesData, phase, opts) {
     if (!scene) return;
+    if (opts?.backedHorseIds) backedHorseIds = opts.backedHorseIds;
+    if (opts?.photoFinish !== undefined) photoFinishMode = opts.photoFinish;
     // Cache for frame-driven animation
     lastHorsesData = horsesData;
     lastPhase = phase;
@@ -624,7 +674,7 @@ const Race3D = (() => {
     }
 
     const isRacing = phase === 'racing';
-    let leadT = 0.96;
+    let leadT = GATE_T;
     let leadIdx = 0;
 
     horsesData.forEach((hd, i) => {
@@ -646,9 +696,9 @@ const Race3D = (() => {
       // ── LOADING: stand in gate ──
       if (phase === 'loading') {
         if (hd.gateLoaded) {
-          h3d._trackT = 0.96;
-          placeOnTrack(h3d, 0.96);
-          setAnimSpeed(h3d, 0); // standing still
+          h3d._trackT = GATE_T;
+          placeOnTrack(h3d, GATE_T);
+          setAnimSpeed(h3d, 0);
         } else {
           h3d.visible = false;
         }
@@ -657,21 +707,35 @@ const Race3D = (() => {
 
       // ── STARTING: all in gate ──
       if (phase === 'starting') {
-        h3d._trackT = 0.96;
-        placeOnTrack(h3d, 0.96);
+        h3d._trackT = GATE_T;
+        placeOnTrack(h3d, GATE_T);
         setAnimSpeed(h3d, 0);
         return;
       }
 
       // ── RACING / RESULT ──
+      // Map pos 0-100 to track t from gate (0.96) around to finish line (0.00)
+      // LAP_DIST=1.04 means full journey from gate past finish, around track, back to finish
       const pos = hd.position || 0;
-      const targetT = 0.96 + (pos / 100);
+      const targetT = GATE_T + (pos / 100) * LAP_DIST;
       h3d._trackT += (targetT - h3d._trackT) * 0.15;
 
       if (h3d._trackT > leadT) { leadT = h3d._trackT; leadIdx = i; }
 
       placeOnTrack(h3d, h3d._trackT);
-      setAnimSpeed(h3d, isRacing ? 6 : 2); // full gallop vs slow trot
+      setAnimSpeed(h3d, isRacing ? 6 : 2);
+
+      // ── Highlight backed horses ──
+      if (h3d._highlightRing) {
+        const isBacked = backedHorseIds.includes(hd.id);
+        const targetOpacity = isBacked ? (0.4 + Math.sin(frameCount * 0.08) * 0.2) : 0;
+        h3d._highlightRing.material.opacity += (targetOpacity - h3d._highlightRing.material.opacity) * 0.15;
+      }
+
+      // ── Number sprite always faces camera ──
+      if (h3d._numberSprite) {
+        h3d._numberSprite.position.y = 4.2 + (isRacing ? Math.sin(frameCount * 0.1 + i) * 0.1 : 0);
+      }
     });
 
     // ── Update dust particles ──
@@ -709,18 +773,31 @@ const Race3D = (() => {
         // Dynamic camera angles based on race progress
         let camHeight, camDist, lerpFactor, camLaneOffset;
 
-        if (leaderProgress < 20) {
+        if (photoFinishMode && leaderProgress > 92) {
+          // PHOTO FINISH: Camera locked at finish line, low side angle
+          const finishCam = getTrackPos(0.005, TRACK_W / 2 + 6);
+          const finishLook = getTrackPos(0.0, 0);
+          camera.position.x += (finishCam.x - camera.position.x) * 0.1;
+          camera.position.z += (finishCam.z - camera.position.z) * 0.1;
+          camera.position.y += (3.5 - camera.position.y) * 0.1;
+          camera.lookAt(finishLook.x, 1.5, finishLook.z);
+          // Skip the normal camera logic below
+          camHeight = null;
+        } else if (leaderProgress < 20) {
           // Early: wide aerial shot showing the field
           camHeight = 22;
           camDist = 0.08;
           camLaneOffset = TRACK_W + 18;
           lerpFactor = 0.04;
-        } else if (leaderProgress > 85) {
-          // Final stretch: low dramatic angle close to track
-          camHeight = 6;
-          camDist = 0.04;
-          camLaneOffset = TRACK_W / 2 + 8;
-          lerpFactor = 0.08;
+        } else if (leaderProgress > 90) {
+          // Final stretch: head-on finish line view
+          const finishAhead = getTrackPos(0.995, TRACK_W / 2 + 10);
+          const finishLook = getTrackPos(0.0, 0);
+          camera.position.x += (finishAhead.x - camera.position.x) * 0.06;
+          camera.position.z += (finishAhead.z - camera.position.z) * 0.06;
+          camera.position.y += (5 - camera.position.y) * 0.06;
+          camera.lookAt(finishLook.x, 1.5, finishLook.z);
+          camHeight = null; // skip default camera
         } else if (leaderProgress > 60 && leaderProgress < 80) {
           // Final turn: elevated wide shot
           camHeight = 18;
@@ -735,15 +812,18 @@ const Race3D = (() => {
           lerpFactor = 0.06;
         }
 
-        const behindT = ((tNorm - camDist) % 1 + 1) % 1;
-        const camPos = getTrackPos(behindT, camLaneOffset);
-        const lookAheadT = ((tNorm + 0.03) % 1 + 1) % 1;
-        const lookPos = getTrackPos(lookAheadT, 0);
+        // Default tracking camera (skipped when camHeight is null for finish angles)
+        if (camHeight !== null) {
+          const behindT = ((tNorm - camDist) % 1 + 1) % 1;
+          const camPos = getTrackPos(behindT, camLaneOffset);
+          const lookAheadT = ((tNorm + 0.03) % 1 + 1) % 1;
+          const lookPos = getTrackPos(lookAheadT, 0);
 
-        camera.position.x += (camPos.x - camera.position.x) * lerpFactor;
-        camera.position.z += (camPos.z - camera.position.z) * lerpFactor;
-        camera.position.y += (camHeight - camera.position.y) * lerpFactor;
-        camera.lookAt(lookPos.x, 1, lookPos.z);
+          camera.position.x += (camPos.x - camera.position.x) * lerpFactor;
+          camera.position.z += (camPos.z - camera.position.z) * lerpFactor;
+          camera.position.y += (camHeight - camera.position.y) * lerpFactor;
+          camera.lookAt(lookPos.x, 1, lookPos.z);
+        }
       }
     }
 

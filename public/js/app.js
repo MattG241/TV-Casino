@@ -734,29 +734,32 @@ function renderHorseRacing(state) {
       ${commentary ? `<div class="race-commentary">${commentary}</div>` : ''}
 
       <div class="race-track">
-        ${horses.map((h, i) => `
-          <div class="horse-lane">
+        ${horses.map((h, i) => {
+          const isMyHorse = myBet && myBet.horseId === h.id;
+          return `
+          <div class="horse-lane ${isMyHorse ? 'my-horse-lane' : ''}">
             <div class="horse-info">
               <div class="horse-number-badge" style="background:${h.color}">${i + 1}</div>
               <div>
-                <div class="horse-name" style="color:${h.color}">${h.name}</div>
-                <div class="horse-odds">${h.odds}:1</div>
+                <div class="horse-name" style="color:${h.color}">${h.name}${isMyHorse ? ' ⭐' : ''}</div>
+                <div class="horse-odds">${h.odds}:1${isMyHorse ? ' · YOUR BET' : ''}</div>
               </div>
             </div>
-            <div class="track-lane" style="background:linear-gradient(90deg, #2a1f0f, #3d2b1a)">
+            <div class="track-lane" style="background:linear-gradient(90deg, ${isMyHorse ? '#2a2500' : '#2a1f0f'}, ${isMyHorse ? '#4a3800' : '#3d2b1a'})">
               <div class="finish-line"></div>
               <div class="track-lane-grass"></div>
-              <div class="horse-marker ${isRacing ? 'racing' : ''} ${state.winner === h.id ? 'winner' : ''} ${atGate ? 'at-gate' : ''}"
+              <div class="horse-marker ${isRacing ? 'racing' : ''} ${state.winner === h.id ? 'winner' : ''} ${atGate ? 'at-gate' : ''} ${isMyHorse && isRacing ? 'my-horse-marker' : ''}"
                 style="left:calc(${atGate ? 2 : Math.min(h.position || 0, 93)}% - 10px); ${isLoading && !h.gateLoaded ? 'opacity:0.3' : ''}"
                 <svg viewBox="0 0 28 20" width="28" height="20">
                   <path d="M4 16 L7 10 L9 11 L11 6 L14 5 L18 4 L22 4 L25 5 L27 4 L27 6 L25 7 L23 9 L22 14 L24 16 L22 16 L20 12 L16 11 L13 13 L11 16 L9 16 L12 11 L9 14 L7 16 Z"
-                    fill="${h.color}" stroke="rgba(0,0,0,0.3)" stroke-width="0.3"/>
+                    fill="${h.color}" stroke="${isMyHorse ? '#ffd700' : 'rgba(0,0,0,0.3)'}" stroke-width="${isMyHorse ? '1' : '0.3'}"/>
                   <circle cx="26" cy="5.5" r="1" fill="#fff"/>
+                  ${isMyHorse ? '<text x="14" y="9" text-anchor="middle" font-size="6" font-weight="bold" fill="#fff">' + (i+1) + '</text>' : ''}
                 </svg>
               </div>
             </div>
-          </div>
-        `).join('')}
+          </div>`;
+        }).join('')}
       </div>
 
       ${state.livePositions && isRacing ? `

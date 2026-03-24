@@ -829,7 +829,8 @@ function renderTVHorseRacing(state) {
     if (infoEl) infoEl.textContent = state.commentary || '';
 
     if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
-      Race3D.updateHorses(horses, 'betting');
+      const backed = Object.values(state.bets||{}).map(b => b.horseId);
+      Race3D.updateHorses(horses, 'betting', { backedHorseIds: backed });
     }
     return;
   }
@@ -882,13 +883,27 @@ function renderTVHorseRacing(state) {
       isLoading ? 'LOADING' : isStarting ? '<span class="live-dot"></span> STARTING' : 'FINAL';
   }
 
-  // Update commentary
+  // Update commentary — show PHOTO FINISH if close
   const commEl = document.getElementById('skyCommentary');
-  if (commEl) commEl.textContent = commentary;
+  if (commEl) {
+    const leaderPos2 = Math.max(...horses.map(h => h.position || 0), 0);
+    const pos2 = horses.filter(h => !h.scratched).map(h => h.position || 0).sort((a,b) => b - a);
+    const isPhoto = leaderPos2 > 90 && pos2.length >= 2 && (pos2[0] - pos2[1]) < 1.5;
+    if (isPhoto && isRacing) {
+      commEl.innerHTML = '<span class="photo-finish-flash">📸 PHOTO FINISH! 📸</span>';
+    } else {
+      commEl.textContent = commentary;
+    }
+  }
 
-  // Update 3D horses
+  // Update 3D horses — pass backed horse IDs and photo finish detection
   if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
-    Race3D.updateHorses(horses, state.phase);
+    const backed = Object.values(state.bets||{}).map(b => b.horseId);
+    // Detect photo finish — top 2 horses within 2 units of each other near the end
+    const leaderPos = Math.max(...horses.map(h => h.position || 0), 0);
+    const positions = horses.filter(h => !h.scratched).map(h => h.position || 0).sort((a,b) => b - a);
+    const isPhotoFinish = leaderPos > 85 && positions.length >= 2 && (positions[0] - positions[1]) < 2;
+    Race3D.updateHorses(horses, state.phase, { backedHorseIds: backed, photoFinish: isPhotoFinish });
   }
 
   // Update sidebar — show live positions with margins

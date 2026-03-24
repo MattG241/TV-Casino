@@ -1110,6 +1110,19 @@ html, body {
   min-height: 30px;
 }
 
+@keyframes photoFlash {
+  0%, 100% { opacity: 1; color: var(--gold); }
+  50% { opacity: 0.6; color: #fff; }
+}
+
+.photo-finish-flash {
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: 3px;
+  animation: photoFlash 0.5s infinite;
+  font-style: normal;
+}
+
 /* Sidebar runner positions */
 .sky-sidebar {
   width: 220px;
