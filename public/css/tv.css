@@ -217,22 +217,100 @@ body { height: 100vh; height: 100dvh; }
   overflow: hidden;
 }
 
-/* ── TV Waiting Screen ─────────────────────────────────────────────────── */
+/* ── TV Waiting Screen (QR Join) ───────────────────────────────────────── */
 .tv-waiting { text-align: center; }
-.tv-waiting h2 { font-size: 28px; margin-bottom: 8px; }
-.tv-waiting .join-instructions { font-size: 18px; color: var(--text-dim); margin-bottom: 16px; }
-.tv-qr-placeholder {
-  width: 120px;
-  height: 120px;
-  background: var(--bg-card);
-  border-radius: 16px;
+.tv-waiting h2 { font-size: 32px; margin-bottom: 16px; color: var(--gold); }
+
+.tv-join-layout {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto;
-  border: 2px solid var(--border);
+  gap: 40px;
 }
-.tv-qr-placeholder span { font-size: 50px; }
+
+.tv-qr-section { text-align: center; }
+
+#qrCanvas {
+  border-radius: 12px;
+  border: 4px solid var(--gold);
+  background: #fff;
+}
+
+.tv-join-url {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  word-break: break-all;
+  max-width: 220px;
+}
+
+.tv-join-info { text-align: left; }
+
+.tv-join-step {
+  font-size: 18px;
+  color: var(--text);
+  margin-bottom: 10px;
+  padding-left: 8px;
+  border-left: 3px solid var(--gold);
+}
+
+.tv-join-step strong {
+  color: var(--gold);
+  font-size: 22px;
+  letter-spacing: 4px;
+}
+
+.tv-players-waiting {
+  font-size: 16px;
+  color: var(--text-dim);
+  margin-top: 16px;
+  animation: pulse 2s ease infinite;
+}
+
+/* ── TV Game Selection ─────────────────────────────────────────────────── */
+.tv-game-select {
+  text-align: center;
+  width: 100%;
+}
+
+.tv-game-select h2 {
+  font-size: 28px;
+  color: var(--gold);
+  margin-bottom: 20px;
+}
+
+.tv-game-grid {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.tv-game-card {
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  padding: 20px 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 120px;
+  text-align: center;
+}
+
+.tv-game-card:hover, .tv-game-card:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 30px rgba(255,215,0,0.2);
+  transform: translateY(-4px);
+}
+
+.tv-game-icon { font-size: 40px; margin-bottom: 8px; }
+.tv-game-name { font-size: 16px; font-weight: 700; color: var(--text); }
+
+.tv-game-select-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 16px;
+}
 
 /* ── TV Roulette ───────────────────────────────────────────────────────── */
 .tv-roulette {

@@ -764,6 +764,15 @@ io.on('connection', (socket) => {
     }
   });
 
+  // TV creates and hosts the room
+  socket.on('tv:create', () => {
+    const room = createRoom('TV');
+    room.tvSocket = socket;
+    room.tvHostSocket = socket; // TV is the host for game selection
+    currentRoom = room;
+    socket.emit('tv:created', { code: room.code, players: playerList(room) });
+  });
+
   socket.on('tv:connect', ({ code }) => {
     const room = getRoom(code);
     if (!room) return socket.emit('room:error', { message: 'Room not found' });
@@ -774,6 +783,14 @@ io.on('connection', (socket) => {
       socket.emit('game:started', { game: room.currentGame });
       socket.emit('game:state', { game: room.currentGame, state: room.gameState });
     }
+  });
+
+  // TV selects game (when TV is host)
+  socket.on('tv:select-game', ({ game }) => {
+    if (!currentRoom || currentRoom.tvHostSocket !== socket) return;
+    currentRoom.currentGame = game;
+    broadcastToRoom(currentRoom, 'game:started', { game });
+    if (games[game]) games[game].start(currentRoom);
   });
 
   socket.on('game:select', ({ game }) => {

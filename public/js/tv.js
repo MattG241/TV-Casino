@@ -14,6 +14,7 @@ let roomCode = '';
 let players = [];
 let currentGame = null;
 let lastRoulettePhase = null;
+let isTVHost = false;
 
 // ── Fullscreen Management ────────────────────────────────────────────────
 
@@ -39,12 +40,11 @@ function toggleFullscreen() {
 }
 
 // Fullscreen prompt - click to enter fullscreen and dismiss
-const prompt = document.getElementById('fullscreenPrompt');
-if (prompt) {
-  prompt.addEventListener('click', () => {
+const fsPrompt = document.getElementById('fullscreenPrompt');
+if (fsPrompt) {
+  fsPrompt.addEventListener('click', () => {
     goFullscreen();
-    prompt.classList.add('hidden');
-    // Init audio context on first user gesture
+    fsPrompt.classList.add('hidden');
     CasinoAudio.startMusic();
   });
 }
@@ -52,6 +52,7 @@ if (prompt) {
 // Double-click anywhere to toggle fullscreen
 document.addEventListener('dblclick', (e) => {
   if (e.target.closest('.tv-sound-toggle')) return;
+  if (e.target.closest('.tv-game-card')) return;
   toggleFullscreen();
 });
 
@@ -65,47 +66,83 @@ if (soundBtn) {
   });
 }
 
-// ── Auto-connect: get room code from URL or prompt ──────────────────────
+// ── Init: TV creates the room ───────────────────────────────────────────
 
 function init() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('room');
-  if (code) {
-    connectToRoom(code);
-  }
-  const url = window.location.port && window.location.port !== '443' && window.location.port !== '80'
-    ? window.location.hostname + ':' + window.location.port
-    : window.location.hostname;
-  document.getElementById('tvUrl').textContent = url;
+  // TV always creates a room on load
+  socket.emit('tv:create');
 }
 
-function connectToRoom(code) {
-  roomCode = code.toUpperCase();
+function getBaseUrl() {
+  const proto = window.location.protocol;
+  const host = window.location.host;
+  return `${proto}//${host}`;
+}
+
+function showJoinInfo() {
+  const baseUrl = getBaseUrl();
+  const joinUrl = `${baseUrl}/?room=${roomCode}`;
+
+  // Update room code displays
   document.getElementById('tvRoomCode').textContent = roomCode;
-  socket.emit('tv:connect', { code: roomCode });
+  const joinCodeEl = document.getElementById('tvJoinCode');
+  if (joinCodeEl) joinCodeEl.textContent = roomCode;
+
+  // Update join URL text
+  const urlEl = document.getElementById('tvJoinUrl');
+  if (urlEl) urlEl.textContent = joinUrl;
+
+  // Render QR code
+  const canvas = document.getElementById('qrCanvas');
+  if (canvas && typeof QRCode !== 'undefined') {
+    QRCode.render(canvas, joinUrl);
+  }
 }
 
-// Listen for room code input via keyboard (for TV remote)
-let codeBuffer = '';
+// Game selection from TV (keyboard 1-5 or click)
+function selectGame(game) {
+  if (!isTVHost) return;
+  socket.emit('tv:select-game', { game });
+}
+
+// Keyboard shortcuts for game selection
 document.addEventListener('keydown', (e) => {
-  if (roomCode) return;
-  // F11 for fullscreen
   if (e.key === 'F11') { e.preventDefault(); toggleFullscreen(); return; }
-  if (e.key === 'Enter' && codeBuffer.length === 4) {
-    connectToRoom(codeBuffer);
-    codeBuffer = '';
-  } else if (e.key === 'Backspace') {
-    codeBuffer = codeBuffer.slice(0, -1);
-  } else if (/^[a-zA-Z0-9]$/.test(e.key) && codeBuffer.length < 4) {
-    codeBuffer += e.key.toUpperCase();
+
+  // Game selection shortcuts when on game select screen
+  const gameSelectEl = document.getElementById('tvGameSelect');
+  if (gameSelectEl && gameSelectEl.classList.contains('active')) {
+    const games = ['roulette', 'slots', 'blackjack', 'poker', 'horseracing'];
+    const num = parseInt(e.key);
+    if (num >= 1 && num <= 5) selectGame(games[num - 1]);
   }
-  document.getElementById('tvRoomCode').textContent = codeBuffer || '----';
+
+  // Escape to go back to game selection
+  if (e.key === 'Escape' && currentGame) {
+    backToGameSelect();
+  }
 });
+
+function backToGameSelect() {
+  if (!isTVHost) return;
+  currentGame = null;
+  showTVScreen('tvGameSelect');
+}
 
 init();
 
 // ── Socket Events ───────────────────────────────────────────────────────
 
+// TV created a room
+socket.on('tv:created', (data) => {
+  roomCode = data.code;
+  players = data.players;
+  isTVHost = true;
+  showJoinInfo();
+  renderPlayers();
+});
+
+// TV joined an existing room (fallback)
 socket.on('tv:connected', (data) => {
   roomCode = data.code;
   players = data.players;
@@ -127,6 +164,20 @@ socket.on('players:update', (data) => {
   players = data;
   renderPlayers();
   if (data.length > prevCount) CasinoAudio.playerJoin();
+
+  // When first player joins and we're on waiting screen, switch to game select
+  const waitingEl = document.getElementById('tvWaiting');
+  if (waitingEl && waitingEl.classList.contains('active') && players.length > 0) {
+    showTVScreen('tvGameSelect');
+  }
+
+  // Update waiting screen player count
+  const pw = document.getElementById('tvPlayersWaiting');
+  if (pw) {
+    pw.textContent = players.length > 0
+      ? `${players.length} player${players.length > 1 ? 's' : ''} connected`
+      : 'Waiting for players...';
+  }
 });
 
 socket.on('game:started', ({ game }) => {
@@ -320,7 +371,6 @@ function renderTVSlots(state) {
     const [pid, result] = latestResult;
     const p = players.find(pl => pl.id === pid);
 
-    // Play sounds on new result
     if (lastSlotsResult !== pid + JSON.stringify(result.reels)) {
       lastSlotsResult = pid + JSON.stringify(result.reels);
       CasinoAudio.slotSpin();

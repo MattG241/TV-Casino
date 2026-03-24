@@ -29,14 +29,52 @@
     <div class="tv-players" id="tvPlayers"></div>
 
     <div class="tv-game-area">
-      <!-- Waiting Screen -->
+      <!-- Waiting Screen (with QR code) -->
       <div class="tv-screen active" id="tvWaiting">
         <div class="tv-waiting">
-          <h2>Waiting for players...</h2>
-          <div class="join-instructions">
-            Open <strong id="tvUrl"></strong> on your phone and enter the room code above
+          <h2>Scan to Join</h2>
+          <div class="tv-join-layout">
+            <div class="tv-qr-section">
+              <canvas id="qrCanvas" width="200" height="200"></canvas>
+              <div class="tv-join-url" id="tvJoinUrl"></div>
+            </div>
+            <div class="tv-join-info">
+              <div class="tv-join-step">1. Scan QR code or visit the URL</div>
+              <div class="tv-join-step">2. Enter your name</div>
+              <div class="tv-join-step">3. Room code: <strong id="tvJoinCode">----</strong></div>
+              <div class="tv-players-waiting" id="tvPlayersWaiting">Waiting for players...</div>
+            </div>
           </div>
-          <div class="tv-qr-placeholder"><span>📱</span></div>
+        </div>
+      </div>
+
+      <!-- Game Selection (TV is host) -->
+      <div class="tv-screen" id="tvGameSelect">
+        <div class="tv-game-select">
+          <h2>Choose a Game</h2>
+          <div class="tv-game-grid">
+            <div class="tv-game-card" onclick="selectGame('roulette')">
+              <div class="tv-game-icon">🎰</div>
+              <div class="tv-game-name">Roulette</div>
+            </div>
+            <div class="tv-game-card" onclick="selectGame('slots')">
+              <div class="tv-game-icon">🍒</div>
+              <div class="tv-game-name">Slots</div>
+            </div>
+            <div class="tv-game-card" onclick="selectGame('blackjack')">
+              <div class="tv-game-icon">🃏</div>
+              <div class="tv-game-name">Blackjack</div>
+            </div>
+            <div class="tv-game-card" onclick="selectGame('poker')">
+              <div class="tv-game-icon">♠️</div>
+              <div class="tv-game-name">Poker</div>
+            </div>
+            <div class="tv-game-card" onclick="selectGame('horseracing')">
+              <div class="tv-game-icon">🏇</div>
+              <div class="tv-game-name">Horses</div>
+            </div>
+          </div>
+          <div class="tv-game-select-hint">Select a game using mouse, remote, or keyboard (1-5)</div>
         </div>
       </div>
 
@@ -70,6 +108,7 @@
   <div class="confetti-container" id="confetti"></div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/qr.js"></script>
   <script src="/js/tv-audio.js"></script>
   <script src="/js/tv.js"></script>
 </body>

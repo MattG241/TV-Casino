@@ -35,6 +35,14 @@ function init() {
     };
     picker.appendChild(el);
   });
+
+  // Auto-fill room code from URL param (from QR code scan)
+  const params = new URLSearchParams(window.location.search);
+  const roomParam = params.get('room');
+  if (roomParam) {
+    const codeInput = document.getElementById('roomCode');
+    if (codeInput) codeInput.value = roomParam.toUpperCase();
+  }
 }
 
 init();
@@ -103,7 +111,7 @@ function updateSelectLabel() {
     label.textContent = 'Choose a game to play';
     document.querySelectorAll('.game-card').forEach(c => c.style.opacity = '1');
   } else {
-    label.textContent = 'Waiting for host to pick a game...';
+    label.textContent = 'Game will be selected on the TV';
     document.querySelectorAll('.game-card').forEach(c => c.style.opacity = '0.5');
   }
 }
