@@ -9,6 +9,24 @@ const CasinoAudio = (() => {
   let musicOsc = null;
   let musicPlaying = false;
 
+  // Pre-load TTS voices (Chrome loads them async)
+  let ttsVoices = [];
+  let ttsReady = false;
+  function loadVoices() {
+    if (!('speechSynthesis' in window)) return;
+    ttsVoices = speechSynthesis.getVoices();
+    if (ttsVoices.length > 0) {
+      ttsReady = true;
+    }
+  }
+  // Load immediately and on voiceschanged event
+  if (typeof window !== 'undefined') {
+    loadVoices();
+    if ('speechSynthesis' in window) {
+      speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    }
+  }
+
   function getCtx() {
     if (!ctx) {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -183,10 +201,26 @@ const CasinoAudio = (() => {
       this._bugleEl.play().catch(() => {});
     },
 
-    // Horse race gallop — continuous loop
+    // Horse race gallop — uses MP3 loop with Web Audio API fallback
     gallop() {
       if (!enabled) return;
       this._gallopActive = true;
+
+      // Try MP3 first
+      if (!this._gallopEl) {
+        this._gallopEl = new Audio('/audio/gallop.mp3');
+        this._gallopEl.loop = true;
+        this._gallopEl.volume = 0.5;
+      }
+      this._gallopEl.currentTime = 0;
+      this._gallopEl.play().catch(() => {
+        // Fallback to synthesized gallop
+        this._gallopSynth();
+      });
+    },
+
+    // Synthesized gallop fallback
+    _gallopSynth() {
       const doGallop = () => {
         if (!this._gallopActive || !enabled) return;
         for (let i = 0; i < 25; i++) {
@@ -200,6 +234,10 @@ const CasinoAudio = (() => {
 
     stopGallop() {
       this._gallopActive = false;
+      if (this._gallopEl) {
+        this._gallopEl.pause();
+        this._gallopEl.currentTime = 0;
+      }
     },
 
     // Horse race finish — trumpet fanfare
@@ -222,20 +260,51 @@ const CasinoAudio = (() => {
     // Spoken race commentary via Web Speech API
     speak(text) {
       if (!enabled || !text) return;
-      if (!('speechSynthesis' in window)) return;
-      // Cancel any ongoing speech
+      if (!('speechSynthesis' in window)) {
+        console.warn('TTS: speechSynthesis not available');
+        return;
+      }
+
+      // Cancel any ongoing speech first
       speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.rate = 1.1;
-      utter.pitch = 0.9;
-      utter.volume = 0.8;
-      // Try to pick a male English voice
-      const voices = speechSynthesis.getVoices();
-      const preferred = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('male'))
-        || voices.find(v => v.lang.startsWith('en-GB'))
-        || voices.find(v => v.lang.startsWith('en'));
-      if (preferred) utter.voice = preferred;
-      speechSynthesis.speak(utter);
+
+      // Chrome bug: after cancel(), need a small delay before speaking
+      setTimeout(() => {
+        try {
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.rate = 1.15;
+          utter.pitch = 0.85;
+          utter.volume = 0.9;
+
+          // Use preloaded voices, fall back to fresh getVoices()
+          const voices = ttsVoices.length > 0 ? ttsVoices : speechSynthesis.getVoices();
+          const preferred = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('male'))
+            || voices.find(v => v.lang === 'en-AU')
+            || voices.find(v => v.lang === 'en-GB')
+            || voices.find(v => v.lang.startsWith('en-'))
+            || voices.find(v => v.lang.startsWith('en'));
+          if (preferred) utter.voice = preferred;
+
+          utter.onerror = (e) => console.warn('TTS error:', e.error);
+
+          speechSynthesis.speak(utter);
+
+          // Chrome workaround: speechSynthesis can pause itself after 15s
+          // Keep it alive by prodding it
+          let keepAlive = setInterval(() => {
+            if (!speechSynthesis.speaking) {
+              clearInterval(keepAlive);
+              return;
+            }
+            speechSynthesis.pause();
+            speechSynthesis.resume();
+          }, 10000);
+
+          utter.onend = () => clearInterval(keepAlive);
+        } catch (e) {
+          console.warn('TTS speak failed:', e);
+        }
+      }, 100);
     },
 
     stopSpeech() {
