@@ -805,8 +805,8 @@ function renderTVHorseRacing(state) {
           <div class="sky-odds-row ${i === 0 ? 'sky-fav' : ''} ${betOnThis > 0 ? 'sky-backed' : ''}">
             <span class="sky-or-num">${origIdx+1}</span>
             <span class="sky-or-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds.toFixed(2)}</span>
-            <span class="sky-or-name" style="color:${h.color}">${h.name}</span>
-            <span class="sky-or-style">${h.styleDesc || ''}</span>
+            <span class="sky-or-name" style="color:${h.color}">${h.name}${h.jockey ? `<br><span class="sky-or-jockey">${h.jockey}</span>` : ''}</span>
+            <span class="sky-or-style">${h.styleDesc || ''}${h.temperament ? `<br><span class="sky-or-temp">${h.temperament}</span>` : ''}</span>
             <span class="sky-or-barrier">(${barrier})</span>
           </div>`;
       }).join('');
@@ -907,12 +907,15 @@ function renderTVHorseRacing(state) {
         ) : '';
         const isSecond = state.phase === 'result' && state.places && state.places[1] === h.id;
         const isThird = state.phase === 'result' && state.places && state.places[2] === h.id;
+        const isBlocked = lp?.blocked;
+        const effort = lp?.effort || 50;
         return `
-        <div class="sky-runner ${isWinner ? 'sky-runner-winner' : ''} ${isSecond ? 'sky-runner-second' : ''} ${isThird ? 'sky-runner-third' : ''} ${pos === 0 && isRacing ? 'sky-runner-lead' : ''}">
+        <div class="sky-runner ${isWinner ? 'sky-runner-winner' : ''} ${isSecond ? 'sky-runner-second' : ''} ${isThird ? 'sky-runner-third' : ''} ${pos === 0 && isRacing ? 'sky-runner-lead' : ''} ${isBlocked ? 'sky-runner-blocked' : ''}">
           <span class="sky-r-pos">${pos + 1}</span>
           <span class="sky-r-silk" style="background:${h.color}">${origIdx+1}</span>
-          <span class="sky-r-name">${h.name.length > 14 ? h.name.substring(0,12)+'..' : h.name}</span>
+          <span class="sky-r-name">${h.name.length > 14 ? h.name.substring(0,12)+'..' : h.name}${isBlocked && isRacing ? ' <span class="sky-blocked-tag">BOXED</span>' : ''}</span>
           ${marginText && pos > 0 ? `<span class="sky-r-margin">${marginText}</span>` : ''}
+          ${isRacing ? `<span class="sky-r-effort" title="Effort"><span class="sky-effort-bar" style="width:${effort}%"></span></span>` : ''}
           <span class="sky-r-odds">$${(h.lockedOdds||h.odds).toFixed(2)}</span>
         </div>`;
       }).join('')}

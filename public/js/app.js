@@ -692,9 +692,10 @@ function renderHorseRacing(state) {
             onclick="hrSelectedHorse=${h.id}; renderHorseRacing(window._hrState)"
             style="border-left: 4px solid ${h.color}">
             <div class="horse-select-name">${h.name}</div>
+            ${h.jockey ? `<div class="horse-jockey-name">${h.jockey}</div>` : ''}
             <div class="horse-select-meta">
               <span class="horse-select-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">$${h.odds.toFixed(2)}</span>
-              <span class="horse-style-tag">${h.styleDesc || ''}</span>
+              <span class="horse-style-tag">${h.styleDesc || ''}${h.temperament ? ' · ' + h.temperament : ''}</span>
             </div>
           </div>`;
         }).join('')}

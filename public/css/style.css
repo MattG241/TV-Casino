@@ -921,6 +921,7 @@ body {
 }
 
 .horse-select-btn .horse-select-name { font-weight: 700; font-size: 12px; }
+.horse-jockey-name { font-size: 9px; color: var(--text-muted); font-style: italic; margin-top: 1px; }
 .horse-select-btn .horse-select-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
 .horse-select-btn .horse-select-odds { color: var(--text-muted); font-size: 11px; transition: color 0.3s; font-weight: 800; }
 .horse-select-btn .horse-select-odds.odds-short { color: var(--green); }
