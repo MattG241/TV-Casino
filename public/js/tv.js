@@ -697,7 +697,7 @@ function renderTVHorseRacing(state) {
           <div class="tv-race-card-row">
             <span class="tv-rc-name" style="color:${h.color}">${h.name}</span>
             <span class="tv-rc-silk">${HORSE_SILKS[i] || '⚪'}</span>
-            <span class="tv-rc-odds">${h.odds}:1</span>
+            <span class="tv-rc-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds}:1</span>
           </div>
         `).join('')}
       </div>

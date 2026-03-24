@@ -791,7 +791,9 @@ html, body {
 
 .tv-rc-name { font-weight: 700; font-size: 14px; flex: 1; }
 .tv-rc-silk { font-size: 18px; width: 40px; text-align: center; }
-.tv-rc-odds { font-weight: 700; color: var(--gold); font-size: 14px; width: 50px; text-align: right; }
+.tv-rc-odds { font-weight: 700; color: var(--gold); font-size: 14px; width: 50px; text-align: right; transition: color 0.3s; }
+.tv-rc-odds.odds-short { color: var(--green); }
+.tv-rc-odds.odds-drift { color: var(--red); }
 
 /* Broadcast-style racing layout */
 .tv-race-broadcast {

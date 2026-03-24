@@ -620,7 +620,7 @@ function renderHorseRacing(state) {
             onclick="hrSelectedHorse=${h.id}; renderHorseRacing(window._hrState)"
             style="border-left: 4px solid ${h.color}">
             <div class="horse-select-name">${h.name}</div>
-            <div class="horse-select-odds">${h.odds}:1 odds</div>
+            <div class="horse-select-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds}:1 odds</div>
           </div>
         `).join('')}
       </div>

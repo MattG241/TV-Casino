@@ -921,7 +921,9 @@ body {
 }
 
 .horse-select-btn .horse-select-name { font-weight: 700; font-size: 12px; }
-.horse-select-btn .horse-select-odds { color: var(--text-muted); font-size: 11px; }
+.horse-select-btn .horse-select-odds { color: var(--text-muted); font-size: 11px; transition: color 0.3s; }
+.horse-select-btn .horse-select-odds.odds-short { color: var(--green); }
+.horse-select-btn .horse-select-odds.odds-drift { color: var(--red); }
 
 /* ── Bet Controls ─────────────────────────────────────────────────────── */
 .bet-controls {

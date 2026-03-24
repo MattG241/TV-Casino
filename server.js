@@ -130,6 +130,95 @@ function evaluateFiveCards(cards) {
   return { rank: 0, name: 'High Card' };
 }
 
+// ── Horse Name Generator ────────────────────────────────────────────────────
+
+const HORSE_ADJECTIVES = [
+  'Angry', 'Lazy', 'Sneaky', 'Dramatic', 'Confused', 'Fancy', 'Grumpy',
+  'Cheeky', 'Wobbly', 'Sassy', 'Cranky', 'Dizzy', 'Funky', 'Salty',
+  'Spicy', 'Moody', 'Clumsy', 'Nerdy', 'Savage', 'Sleepy', 'Rowdy',
+  'Shady', 'Frisky', 'Jolly', 'Breezy', 'Gassy', 'Hangry', 'Bougie',
+  'Reckless', 'Bizarre', 'Chaotic', 'Dapper', 'Sketchy', 'Petty',
+  'Majestic', 'Unhinged', 'Legendary', 'Absolute', 'Sir', 'Lord',
+  'Captain', 'Professor', 'Doctor', 'General', 'Duke', 'Baron',
+];
+
+const HORSE_NOUNS = [
+  'Biscuit', 'Noodle', 'Tornado', 'Waffle', 'Pickle', 'Nugget',
+  'Pancake', 'Thunder', 'Muffin', 'Burrito', 'Pretzel', 'Taco',
+  'Pudding', 'Crumpet', 'Sausage', 'Chaos', 'Danger', 'Mayhem',
+  'Trouble', 'Disaster', 'Fury', 'Wombat', 'Penguin', 'Llama',
+  'Badger', 'Chicken', 'Lobster', 'Pigeon', 'Squirrel', 'Walrus',
+  'Beans', 'Legs', 'Sparkles', 'Glitter', 'Baguette', 'Cabbage',
+  'Banana', 'Potato', 'Gravy', 'Mustard', 'Ketchup', 'Biscotti',
+  'Velocity', 'Lightning', 'Rocket', 'Turbo', 'Nitro', 'Express',
+];
+
+function generateHorseName(usedNames) {
+  let name;
+  let attempts = 0;
+  do {
+    const adj = HORSE_ADJECTIVES[Math.floor(Math.random() * HORSE_ADJECTIVES.length)];
+    const noun = HORSE_NOUNS[Math.floor(Math.random() * HORSE_NOUNS.length)];
+    name = `${adj} ${noun}`;
+    attempts++;
+  } while (usedNames.has(name) && attempts < 50);
+  usedNames.add(name);
+  return name;
+}
+
+// ── Dynamic Odds System ─────────────────────────────────────────────────────
+
+function generateBaseOdds() {
+  // Generate realistic base odds for 6 horses
+  // One favourite, a couple mid-range, and some longshots
+  const templates = [
+    [2.5, 4, 5, 7, 10, 15],
+    [3, 3.5, 5, 6, 9, 12],
+    [2, 4, 6, 8, 10, 20],
+    [3, 4, 4.5, 6, 8, 14],
+    [2.5, 3.5, 5, 7, 11, 16],
+  ];
+  const template = templates[Math.floor(Math.random() * templates.length)];
+  // Shuffle so favourite isn't always lane 1
+  for (let i = template.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [template[i], template[j]] = [template[j], template[i]];
+  }
+  return template;
+}
+
+function recalculateOdds(horses, bets) {
+  // Dynamic odds based on betting pool
+  // More money on a horse = lower odds (shorter price)
+  const betTotals = {};
+  let totalPool = 0;
+  for (const horse of horses) betTotals[horse.id] = 0;
+
+  for (const bet of Object.values(bets)) {
+    betTotals[bet.horseId] = (betTotals[bet.horseId] || 0) + bet.amount;
+    totalPool += bet.amount;
+  }
+
+  if (totalPool === 0) return; // no bets, keep base odds
+
+  for (const horse of horses) {
+    const betOnThis = betTotals[horse.id] || 0;
+    const betFraction = betOnThis / totalPool;
+
+    if (betFraction > 0) {
+      // Shorten odds when more money comes in
+      // Blend between base odds and implied odds from pool
+      const impliedOdds = Math.max(1.5, (1 / betFraction) * 0.9);
+      horse.odds = Math.round(((horse.baseOdds * 0.4) + (impliedOdds * 0.6)) * 10) / 10;
+    } else {
+      // Drift odds slightly up when no money on this horse
+      horse.odds = Math.round((horse.baseOdds * 1.15) * 10) / 10;
+    }
+    // Clamp
+    horse.odds = Math.max(1.5, Math.min(50, horse.odds));
+  }
+}
+
 // ── Game Engines ────────────────────────────────────────────────────────────
 
 const games = {
@@ -631,23 +720,43 @@ const games = {
   horseracing: {
     start(room) {
       if (room.currentGame !== 'horseracing') return;
-      const horses = [
-        { id: 1, name: 'Thunder Bolt', color: '#e74c3c', odds: 3, position: 0 },
-        { id: 2, name: 'Silver Arrow', color: '#3498db', odds: 4, position: 0 },
-        { id: 3, name: 'Golden Star', color: '#f1c40f', odds: 5, position: 0 },
-        { id: 4, name: 'Dark Knight', color: '#2c3e50', odds: 6, position: 0 },
-        { id: 5, name: 'Wild Spirit', color: '#27ae60', odds: 8, position: 0 },
-        { id: 6, name: 'Lucky Charm', color: '#9b59b6', odds: 10, position: 0 },
-      ];
+      const colors = ['#c0392b', '#2980b9', '#d4a843', '#2c3e50', '#27ae60', '#8e44ad'];
+      const usedNames = new Set();
+      const baseOdds = generateBaseOdds();
+      const horses = colors.map((color, i) => ({
+        id: i + 1,
+        name: generateHorseName(usedNames),
+        color,
+        baseOdds: baseOdds[i],
+        odds: baseOdds[i],
+        position: 0,
+      }));
       room.gameState = {
         phase: 'betting',
         horses,
         bets: {},
-        timer: 15,
+        timer: 20,
         winner: null,
       };
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
-      startBettingTimer(room, 15);
+      startBettingTimer(room, 20);
+
+      // Fluctuate odds every 2 seconds during betting to simulate market movement
+      room._oddsInterval = setInterval(() => {
+        if (!room.gameState || room.gameState.phase !== 'betting') {
+          clearInterval(room._oddsInterval);
+          room._oddsInterval = null;
+          return;
+        }
+        // Small random drift even without new bets
+        for (const horse of room.gameState.horses) {
+          const drift = (Math.random() - 0.5) * 0.6;
+          horse.odds = Math.round(Math.max(1.5, Math.min(50, horse.odds + drift)) * 10) / 10;
+        }
+        // Recalculate based on actual bets
+        recalculateOdds(room.gameState.horses, room.gameState.bets);
+        broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
+      }, 2000);
     },
     placeBet(room, playerId, horseId, amount) {
       if (!room.gameState || room.gameState.phase !== 'betting') return;
@@ -657,12 +766,24 @@ const games = {
       if (room.gameState.bets[playerId]) return; // already bet
       player.chips -= amount;
       room.gameState.bets[playerId] = { horseId, amount };
+      // Recalculate odds immediately when a bet comes in
+      recalculateOdds(room.gameState.horses, room.gameState.bets);
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       broadcastToRoom(room, 'players:update', playerList(room));
     },
     race(room) {
       const gs = room.gameState;
       if (!gs) return;
+
+      // Stop odds fluctuation
+      if (room._oddsInterval) {
+        clearInterval(room._oddsInterval);
+        room._oddsInterval = null;
+      }
+      // Lock in final odds for payouts
+      for (const horse of gs.horses) {
+        horse.lockedOdds = horse.odds;
+      }
 
       // Starting gate phase
       gs.phase = 'starting';
@@ -709,7 +830,7 @@ const games = {
           let finished = false;
           for (const horse of gs.horses) {
             const baseSpeed = 2 + Math.random() * 4;
-            const oddsBonus = (12 - horse.odds) * 0.15;
+            const oddsBonus = (12 - horse.baseOdds) * 0.15;
             horse.position += baseSpeed + oddsBonus + (Math.random() * 2 - 1);
             if (horse.position > leaderPos) {
               leaderPos = horse.position;
@@ -745,9 +866,10 @@ const games = {
               const player = room.players.find(p => p.id === pid);
               if (!player) continue;
               if (bet.horseId === gs.winner) {
-                player.chips += bet.amount * winHorse.odds;
+                const payoutOdds = winHorse.lockedOdds || winHorse.odds;
+                player.chips += Math.round(bet.amount * payoutOdds);
                 bet.won = true;
-                bet.winAmount = bet.amount * winHorse.odds;
+                bet.winAmount = Math.round(bet.amount * payoutOdds);
               }
             }
             broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
@@ -1002,6 +1124,10 @@ io.on('connection', (socket) => {
         clearInterval(currentRoom._raceInterval);
         currentRoom._raceInterval = null;
       }
+      if (currentRoom._oddsInterval) {
+        clearInterval(currentRoom._oddsInterval);
+        currentRoom._oddsInterval = null;
+      }
       clearTimeout(currentRoom._betBroadcastTimeout);
       currentRoom.currentGame = null;
       currentRoom.gameState = null;
@@ -1082,6 +1208,7 @@ io.on('connection', (socket) => {
       if (currentRoom._timerInterval) clearInterval(currentRoom._timerInterval);
       if (currentRoom._voteTimerInterval) clearInterval(currentRoom._voteTimerInterval);
       if (currentRoom._raceInterval) clearInterval(currentRoom._raceInterval);
+      if (currentRoom._oddsInterval) clearInterval(currentRoom._oddsInterval);
       clearTimeout(currentRoom._betBroadcastTimeout);
       rooms.delete(currentRoom.code);
     } else {
