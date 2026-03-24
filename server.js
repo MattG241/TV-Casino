@@ -727,6 +727,13 @@ const games = {
       const colors = ALL_COLORS.slice(0, numHorses);
       const usedNames = new Set();
       const baseOdds = generateBaseOdds(numHorses);
+      const DISTANCES = [1000, 1100, 1200, 1400, 1600, 1800, 2000, 2200, 2400, 3200];
+      const distance = DISTANCES[Math.floor(Math.random() * DISTANCES.length)];
+
+      // Track race number
+      if (!room._raceNumber) room._raceNumber = 0;
+      room._raceNumber++;
+
       const horses = colors.map((color, i) => ({
         id: i + 1,
         name: generateHorseName(usedNames),
@@ -735,6 +742,7 @@ const games = {
         odds: baseOdds[i],
         position: 0,
         gateLoaded: false,
+        scratched: false,
       }));
       room.gameState = {
         phase: 'betting',
@@ -742,9 +750,41 @@ const games = {
         bets: {},
         timer: 25,
         winner: null,
-        commentary: 'The runners are being paraded before the race.',
-        speak: 'Welcome to the races. The runners are being paraded. Place your bets now.',
+        raceNumber: room._raceNumber,
+        distance,
+        commentary: `Race ${room._raceNumber} — ${distance}m. The runners are being paraded.`,
+        speak: `Race ${room._raceNumber}. ${distance} meters. The runners are being paraded. Place your bets now.`,
       };
+
+      // Random late scratching (15% chance per race, max 1-2 horses, never scratch all)
+      if (numHorses > 5 && Math.random() < 0.15) {
+        const scratchCount = Math.random() < 0.7 ? 1 : 2;
+        const scratchable = horses.filter(h => h.baseOdds > 5); // don't scratch favourites
+        for (let s = 0; s < scratchCount && scratchable.length > 0; s++) {
+          const idx = Math.floor(Math.random() * scratchable.length);
+          const scratched = scratchable.splice(idx, 1)[0];
+          scratched.scratched = true;
+          // Schedule the scratching announcement during betting
+          const delay = 3000 + Math.random() * 8000;
+          setTimeout(() => {
+            if (!room.gameState || room.gameState.phase !== 'betting') return;
+            room.gameState.commentary = `LATE SCRATCHING: ${scratched.name} (${scratched.id}) has been withdrawn!`;
+            room.gameState.speak = `Late scratching. Number ${scratched.id}, ${scratched.name}, has been scratched from the race.`;
+            // Refund any bets on this horse
+            for (const [pid, bet] of Object.entries(room.gameState.bets)) {
+              if (bet.horseId === scratched.id) {
+                const player = room.players.find(p => p.id === pid);
+                if (player) {
+                  player.chips += bet.amount;
+                  delete room.gameState.bets[pid];
+                  broadcastToRoom(room, 'players:update', playerList(room));
+                }
+              }
+            }
+            broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
+          }, delay);
+        }
+      }
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       startBettingTimer(room, 25);
 

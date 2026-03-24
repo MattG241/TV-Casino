@@ -859,6 +859,17 @@ html, body {
 .tab-col-odds.odds-short { color: var(--green); }
 .tab-col-odds.odds-drift { color: var(--red); }
 
+.tab-scratched { opacity: 0.4; text-decoration: none; }
+.tab-scr-tag {
+  background: var(--red);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 2px;
+  margin-left: 6px;
+}
+
 .tab-bets-bar {
   display: flex;
   gap: 8px;

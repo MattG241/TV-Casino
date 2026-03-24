@@ -700,8 +700,8 @@ function renderTVHorseRacing(state) {
         <div class="tab-header">
           <div class="tab-logo">TV CASINO</div>
           <div class="tab-race-info">
-            <span class="tab-race-num">RACE ${Math.floor(Math.random()*12)+1}</span>
-            <span class="tab-distance">${[1000,1200,1400,1600,1800,2000,2400][Math.floor(Math.random()*7)]}m</span>
+            <span class="tab-race-num">RACE ${state.raceNumber || 1}</span>
+            <span class="tab-distance">${state.distance || 1600}m</span>
           </div>
           <div class="tab-countdown ${state.timer <= 5 ? 'urgent' : ''}">-${String(Math.floor(state.timer/60)).padStart(1,'0')}:${String(state.timer%60).padStart(2,'0')}</div>
         </div>
@@ -714,8 +714,16 @@ function renderTVHorseRacing(state) {
           ${sorted.map((h, i) => {
             const origIdx = horses.indexOf(h);
             const betOnThis = Object.values(state.bets||{}).filter(b=>b.horseId===h.id).length;
+            if (h.scratched) return `
+            <div class="tab-row tab-scratched">
+              <span class="tab-col-num">
+                <span class="tab-silk" style="background:#666">${origIdx+1}</span>
+              </span>
+              <span class="tab-col-name"><s>${h.name}</s> <span class="tab-scr-tag">SCR</span></span>
+              <span class="tab-col-odds">—</span>
+            </div>`;
             return `
-            <div class="tab-row ${i === 0 ? 'tab-favourite' : ''} ${betOnThis > 0 ? 'tab-backed' : ''}">
+            <div class="tab-row ${i === 0 && !h.scratched ? 'tab-favourite' : ''} ${betOnThis > 0 ? 'tab-backed' : ''}">
               <span class="tab-col-num">
                 <span class="tab-silk" style="background:${h.color}">${origIdx+1}</span>
               </span>

@@ -611,18 +611,27 @@ function renderHorseRacing(state) {
 
   if (state.phase === 'betting') {
     el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-family:var(--font-display);font-weight:700;color:var(--gold)">Race ${state.raceNumber || ''} — ${state.distance || ''}m</span>
+        <span style="font-size:12px;color:var(--text-muted)">${horses.filter(h=>!h.scratched).length} runners</span>
+      </div>
       <div class="timer-bar"><div class="timer-fill" style="width:${(state.timer/25)*100}%"></div></div>
       <div class="timer-text">${state.timer}s to place bets</div>
 
       <div class="horse-select-grid">
-        ${horses.map(h => `
+        ${horses.map(h => {
+          if (h.scratched) return `
+            <div class="horse-select-btn" style="opacity:0.3;pointer-events:none;border-left:4px solid #666">
+              <div class="horse-select-name"><s>${h.name}</s> <span style="color:var(--red);font-size:9px;font-weight:800">SCR</span></div>
+            </div>`;
+          return `
           <div class="horse-select-btn ${hrSelectedHorse === h.id ? 'selected' : ''}"
             onclick="hrSelectedHorse=${h.id}; renderHorseRacing(window._hrState)"
             style="border-left: 4px solid ${h.color}">
             <div class="horse-select-name">${h.name}</div>
-            <div class="horse-select-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds}:1 odds</div>
-          </div>
-        `).join('')}
+            <div class="horse-select-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">$${h.odds.toFixed(2)}</div>
+          </div>`;
+        }).join('')}
       </div>
 
       ${!myBet ? `
