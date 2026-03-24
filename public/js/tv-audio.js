@@ -194,45 +194,24 @@ const CasinoAudio = (() => {
       playTone(250, 0.2, 'sine', 0.1, 0.1);
     },
 
-    // Ambient background music (looping jazzy chords)
+    // Background music from MP3 file
     startMusic() {
       if (!enabled || musicPlaying) return;
-      const c = getCtx();
       musicPlaying = true;
 
-      const chords = [
-        [261, 329, 392], // C major
-        [293, 370, 440], // D minor
-        [349, 440, 523], // F major
-        [392, 493, 587], // G major
-      ];
-      let chordIdx = 0;
-
-      function playChord() {
-        if (!musicPlaying || !enabled) return;
-        const chord = chords[chordIdx % chords.length];
-        chordIdx++;
-        chord.forEach(freq => {
-          const osc = c.createOscillator();
-          const g = c.createGain();
-          osc.type = 'sine';
-          osc.frequency.value = freq;
-          g.gain.setValueAtTime(0, c.currentTime);
-          g.gain.linearRampToValueAtTime(0.04, c.currentTime + 0.5);
-          g.gain.linearRampToValueAtTime(0.02, c.currentTime + 3);
-          g.gain.linearRampToValueAtTime(0, c.currentTime + 4);
-          osc.connect(g);
-          g.connect(musicGain);
-          osc.start();
-          osc.stop(c.currentTime + 4.1);
-        });
-        setTimeout(playChord, 4000);
+      if (!this._musicEl) {
+        this._musicEl = new Audio('/audio/music.mp3');
+        this._musicEl.loop = true;
+        this._musicEl.volume = 0.15;
       }
-      playChord();
+      this._musicEl.play().catch(() => {});
     },
 
     stopMusic() {
       musicPlaying = false;
+      if (this._musicEl) {
+        this._musicEl.pause();
+      }
     },
   };
 })();
