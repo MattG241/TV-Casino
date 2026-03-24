@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0a0e17">
+  <title>TV Casino</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header" id="mainHeader">
+      <div class="logo">TV CASINO</div>
+      <div class="logo-sub">Play on Phone &bull; Watch on TV</div>
+    </div>
+
+    <!-- LOBBY SCREEN -->
+    <div class="screen active" id="lobbyScreen">
+      <div class="avatar-picker" id="avatarPicker"></div>
+      <div class="lobby-actions">
+        <div class="input-group">
+          <input type="text" id="playerName" placeholder="Your Name" maxlength="12" autocomplete="off">
+        </div>
+        <button class="btn btn-gold btn-block" onclick="createRoom()">Create Room</button>
+        <div class="divider">or join an existing room</div>
+        <div class="join-section">
+          <input type="text" id="roomCode" placeholder="CODE" maxlength="4" autocomplete="off">
+          <button class="btn btn-outline" onclick="joinRoom()">Join</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROOM SCREEN -->
+    <div class="screen" id="roomScreen">
+      <div class="room-header">
+        <div>
+          <div style="font-size:11px;color:var(--text-dim)">ROOM</div>
+          <div class="room-code" id="displayRoomCode"></div>
+        </div>
+        <div class="chips-display">
+          <span class="chip-icon">$</span>
+          <span id="myChips">1000</span>
+        </div>
+      </div>
+      <div class="players-bar" id="playersBar"></div>
+
+      <!-- Game Selection (host only, or waiting) -->
+      <div id="gameSelection">
+        <div style="text-align:center;margin-bottom:8px;font-size:14px;color:var(--text-dim)" id="selectLabel">Choose a game</div>
+        <div class="game-grid">
+          <div class="game-card" onclick="selectGame('roulette')">
+            <div class="game-icon">🎰</div>
+            <div class="game-name">Roulette</div>
+            <div class="game-desc">Bet on numbers & colors</div>
+          </div>
+          <div class="game-card" onclick="selectGame('slots')">
+            <div class="game-icon">🍒</div>
+            <div class="game-name">Slots</div>
+            <div class="game-desc">Spin to win big</div>
+          </div>
+          <div class="game-card" onclick="selectGame('blackjack')">
+            <div class="game-icon">🃏</div>
+            <div class="game-name">Blackjack</div>
+            <div class="game-desc">Beat the dealer to 21</div>
+          </div>
+          <div class="game-card" onclick="selectGame('poker')">
+            <div class="game-icon">♠️</div>
+            <div class="game-name">Poker</div>
+            <div class="game-desc">Texas Hold'em</div>
+          </div>
+          <div class="game-card" onclick="selectGame('horseracing')">
+            <div class="game-icon">🏇</div>
+            <div class="game-name">Horses</div>
+            <div class="game-desc">Pick a winner</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GAME VIEWS -->
+      <div id="gameArea" style="display:none">
+        <button class="back-btn" onclick="backToLobby()">&#8592; Back to Games</button>
+
+        <!-- ROULETTE -->
+        <div class="screen" id="rouletteGame">
+          <div id="rouletteContent"></div>
+        </div>
+
+        <!-- SLOTS -->
+        <div class="screen" id="slotsGame">
+          <div id="slotsContent"></div>
+        </div>
+
+        <!-- BLACKJACK -->
+        <div class="screen" id="blackjackGame">
+          <div id="blackjackContent"></div>
+        </div>
+
+        <!-- POKER -->
+        <div class="screen" id="pokerGame">
+          <div id="pokerContent"></div>
+        </div>
+
+        <!-- HORSE RACING -->
+        <div class="screen" id="horseracingGame">
+          <div id="horseracingContent"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

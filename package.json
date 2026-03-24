@@ -1,0 +1,15 @@
+{
+  "name": "tv-casino",
+  "version": "1.0.0",
+  "description": "Mobile casino game with Chromecast TV casting and multiplayer support",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "uuid": "^9.0.0"
+  }
+}
