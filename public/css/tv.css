@@ -926,69 +926,20 @@ html, body {
 
 .sky-main { display: flex; border: 1px solid var(--border); border-top: none; }
 
-.sky-track-area { flex: 1; display: flex; flex-direction: column; }
+.sky-track-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
-.sky-track {
+.sky-track-3d {
   flex: 1;
+  min-height: 320px;
   position: relative;
-  min-height: 300px;
+  background: #1a1408;
   overflow: hidden;
 }
 
-.sky-track-surface {
-  position: absolute;
-  inset: 0;
-  background:
-    repeating-linear-gradient(90deg, transparent 0px, transparent 60px, rgba(0,0,0,0.04) 60px, rgba(0,0,0,0.04) 120px),
-    linear-gradient(180deg, #3d2b1a 0%, #5a4228 20%, #6b5030 40%, #7a5c35 55%, #6b5030 70%, #5a4228 85%, #3d2b1a 100%);
-}
-
-.sky-rail {
-  position: absolute;
-  left: 0; right: 0;
-  height: 2px;
-  z-index: 5;
-  background: rgba(255,255,255,0.25);
-}
-
-.sky-rail-top { top: 2%; }
-.sky-rail-bot { bottom: 2%; }
-
-.sky-finish-post {
-  position: absolute;
-  right: 5%;
-  top: 1%;
-  bottom: 1%;
-  width: 4px;
-  background: repeating-linear-gradient(to bottom, #fff 0px, #fff 5px, #111 5px, #111 10px);
-  z-index: 5;
-}
-
-.sky-horse {
-  position: absolute;
-  z-index: 10;
-  transition: left 0.1s linear;
-}
-
-.sky-horse.galloping { animation: gallop 0.22s infinite; }
-.sky-horse.winner-flash { animation: winnerFlash 0.4s infinite; z-index: 20; }
-
-.sky-horse svg { filter: drop-shadow(2px 2px 3px rgba(0,0,0,0.6)); }
-
-.sky-horse-num {
-  position: absolute;
-  bottom: -12px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 8px;
-  font-weight: 900;
-  color: #fff;
+.sky-track-3d canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .sky-commentary {

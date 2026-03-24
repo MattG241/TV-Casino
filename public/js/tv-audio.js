@@ -172,18 +172,15 @@ const CasinoAudio = (() => {
       notes.forEach((f, i) => playTone(f, 0.15, 'triangle', 0.2, i * 0.08));
     },
 
-    // Starting bell / siren
+    // Starting bugle — plays the real MP3
     startingBell() {
       if (!enabled) return;
-      // Three ascending bell tones then a long ring
-      playTone(800, 0.3, 'sine', 0.25);
-      playTone(800, 0.3, 'sine', 0.25, 0.5);
-      playTone(800, 0.3, 'sine', 0.25, 1.0);
-      // Long sustained bell
-      playTone(1200, 0.8, 'sine', 0.35, 1.5);
-      playTone(1200, 0.8, 'triangle', 0.15, 1.5);
-      // Crowd roar (noise burst)
-      setTimeout(() => playNoise(1.5, 0.12), 1800);
+      if (!this._bugleEl) {
+        this._bugleEl = new Audio('/audio/bugle.mp3');
+        this._bugleEl.volume = 0.7;
+      }
+      this._bugleEl.currentTime = 0;
+      this._bugleEl.play().catch(() => {});
     },
 
     // Horse race gallop — continuous loop

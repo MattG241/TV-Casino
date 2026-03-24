@@ -299,10 +299,14 @@ function showTVScreen(id) {
   document.querySelectorAll('.tv-screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById(id);
   if (el) el.classList.add('active');
-  // Stop floating animation when leaving waiting screen
-  if (id !== 'tvWaiting') {
-    floatAnimFrameId = null;
+  if (id !== 'tvWaiting') floatAnimFrameId = null;
+  // Clean up 3D when leaving horse racing
+  if (id !== 'tvHorseracing' && typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
+    Race3D.stopRendering();
+    Race3D.dispose();
   }
+  // Stop gallop audio
+  if (id !== 'tvHorseracing') CasinoAudio.stopGallop();
 }
 
 function renderPlayers() {
@@ -737,77 +741,90 @@ function renderTVHorseRacing(state) {
     return;
   }
 
-  // ── Sky Racing-style live view ──
+  // ── 3D Track + Sky Racing sidebar ──
   const commentary = state.commentary || '';
   const isLoading = state.phase === 'loading';
   const showTrack = isRacing || isStarting || isLoading || state.phase === 'result';
   if (!showTrack) return;
 
-  // Sort horses by position for the running order sidebar
   const runOrder = [...horses].sort((a, b) => (b.position||0) - (a.position||0));
   const laneCount = horses.length;
 
-  el.innerHTML = `
-    <div class="sky-broadcast">
-      <div class="sky-topbar">
-        <div class="sky-status">
-          ${isRacing ? '<span class="live-dot"></span> LIVE' :
-            isLoading ? 'LOADING' : isStarting ? 'STARTING' : 'FINAL'}
+  // Build HTML — only rebuild the overlay/sidebar, not the 3D canvas
+  const track3dEl = el.querySelector('.sky-track-3d');
+  if (!track3dEl) {
+    el.innerHTML = `
+      <div class="sky-broadcast">
+        <div class="sky-topbar">
+          <div class="sky-status" id="skyStatus"></div>
+          <div class="sky-title">TV CASINO RACING</div>
+          <div class="sky-race-info">${horses.length} RUNNERS</div>
         </div>
-        <div class="sky-title">TV CASINO RACING</div>
-        <div class="sky-race-info">${horses.length} RUNNERS</div>
-      </div>
-
-      <div class="sky-main">
-        <div class="sky-track-area">
-          <div class="sky-track">
-            <div class="sky-track-surface">
-              ${horses.map((h, i) => {
-                const pos = (isLoading || isStarting) ? 2 : Math.min(h.position||0, 95);
-                const laneY = 3 + (i * (94 / laneCount));
-                const loaded = h.gateLoaded || isRacing || state.phase === 'result';
-                const isWinner = state.winner === h.id;
-                return `
-                  <div class="sky-horse ${isRacing ? 'galloping' : ''} ${isWinner && state.phase==='result' ? 'winner-flash' : ''}"
-                    style="left:${pos}%; top:${laneY}%; ${!loaded && isLoading ? 'opacity:0.25' : ''}">
-                    <svg viewBox="0 0 40 28" width="36" height="25">
-                      <path d="M6 22 L9 14 L12 16 L14 10 L17 8 L22 6 L28 6 L32 7 L35 6 L37 8 L35 10 L32 9 L30 11 L28 15 L30 17 L32 22 L29 22 L27 18 L24 16 L20 18 L16 22 L14 22 L16 16 L12 20 L10 22 Z"
-                        fill="${h.color}" stroke="rgba(0,0,0,0.5)" stroke-width="0.4"/>
-                      <circle cx="35" cy="8" r="1.2" fill="#fff"/>
-                    </svg>
-                    <span class="sky-horse-num" style="background:${h.color}">${i+1}</span>
-                  </div>`;
-              }).join('')}
-              <div class="sky-finish-post"></div>
-              <div class="sky-rail sky-rail-top"></div>
-              <div class="sky-rail sky-rail-bot"></div>
-            </div>
+        <div class="sky-main">
+          <div class="sky-track-area">
+            <div class="sky-track-3d" id="raceTrack3d"></div>
+            <div class="sky-commentary" id="skyCommentary"></div>
           </div>
-          <div class="sky-commentary">${commentary}</div>
+          <div class="sky-sidebar" id="skySidebar"></div>
         </div>
-
-        <div class="sky-sidebar">
-          <div class="sky-sb-header">POS</div>
-          ${runOrder.slice(0, Math.min(8, laneCount)).map((h, pos) => {
-            const origIdx = horses.indexOf(h);
-            const isWinner = state.winner === h.id;
-            return `
-            <div class="sky-runner ${isWinner ? 'sky-runner-winner' : ''} ${pos === 0 && isRacing ? 'sky-runner-lead' : ''}">
-              <span class="sky-r-silk" style="background:${h.color}">${origIdx+1}</span>
-              <span class="sky-r-name">${h.name.length > 14 ? h.name.substring(0,12)+'..' : h.name}</span>
-              <span class="sky-r-odds">$${(h.lockedOdds||h.odds).toFixed(2)}</span>
-            </div>`;
-          }).join('')}
-          ${laneCount > 8 ? `<div class="sky-runner" style="opacity:0.5;justify-content:center">+${laneCount-8} more</div>` : ''}
-        </div>
+        <div id="skyResultArea"></div>
       </div>
+    `;
+    // Init 3D scene
+    const container3d = document.getElementById('raceTrack3d');
+    if (container3d && typeof Race3D !== 'undefined') {
+      Race3D.init(container3d);
+      Race3D.startRendering();
+    }
+  }
 
-      ${state.phase === 'result' && state.winner ? `
+  // Update status
+  const statusEl = document.getElementById('skyStatus');
+  if (statusEl) {
+    statusEl.innerHTML = isRacing ? '<span class="live-dot"></span> LIVE' :
+      isLoading ? 'LOADING' : isStarting ? 'STARTING' : 'FINAL';
+  }
+
+  // Update commentary
+  const commEl = document.getElementById('skyCommentary');
+  if (commEl) commEl.textContent = commentary;
+
+  // Update 3D horses
+  if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
+    Race3D.updateHorses(horses, state.phase);
+  }
+
+  // Update sidebar
+  const sbEl = document.getElementById('skySidebar');
+  if (sbEl) {
+    sbEl.innerHTML = `
+      <div class="sky-sb-header">POS</div>
+      ${runOrder.slice(0, Math.min(10, laneCount)).map((h, pos) => {
+        const origIdx = horses.indexOf(h);
+        const isWinner = state.winner === h.id;
+        return `
+        <div class="sky-runner ${isWinner ? 'sky-runner-winner' : ''} ${pos === 0 && isRacing ? 'sky-runner-lead' : ''}">
+          <span class="sky-r-silk" style="background:${h.color}">${origIdx+1}</span>
+          <span class="sky-r-name">${h.name.length > 14 ? h.name.substring(0,12)+'..' : h.name}</span>
+          <span class="sky-r-odds">$${(h.lockedOdds||h.odds).toFixed(2)}</span>
+        </div>`;
+      }).join('')}
+      ${laneCount > 10 ? `<div class="sky-runner" style="opacity:0.5;justify-content:center;font-size:10px">+${laneCount-10} more</div>` : ''}
+    `;
+  }
+
+  // Update result area
+  const resultEl = document.getElementById('skyResultArea');
+  if (resultEl) {
+    if (state.phase === 'result' && state.winner) {
+      const winHorse = horses.find(h=>h.id===state.winner);
+      const winIdx = horses.indexOf(winHorse);
+      resultEl.innerHTML = `
         <div class="sky-result-bar">
           <span class="sky-result-pos">1ST</span>
-          <span class="sky-result-silk" style="background:${horses.find(h=>h.id===state.winner)?.color}">${horses.indexOf(horses.find(h=>h.id===state.winner))+1}</span>
-          <span class="sky-result-name">${horses.find(h=>h.id===state.winner)?.name}</span>
-          <span class="sky-result-odds">$${(horses.find(h=>h.id===state.winner)?.lockedOdds||horses.find(h=>h.id===state.winner)?.odds).toFixed(2)}</span>
+          <span class="sky-result-silk" style="background:${winHorse?.color}">${winIdx+1}</span>
+          <span class="sky-result-name">${winHorse?.name}</span>
+          <span class="sky-result-odds">$${(winHorse?.lockedOdds||winHorse?.odds||0).toFixed(2)}</span>
           ${state.places && state.places[1] ? `
             <span class="sky-result-sep">|</span>
             <span class="sky-result-pos" style="background:#888">2ND</span>
@@ -829,9 +846,11 @@ function renderTVHorseRacing(state) {
               </div>`;
           }).join('')}
         </div>
-      ` : ''}
-    </div>
-  `;
+      `;
+    } else {
+      resultEl.innerHTML = '';
+    }
+  }
 
   if (state.phase === 'result' && state.winner) showConfetti();
 }
