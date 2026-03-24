@@ -667,57 +667,79 @@ function renderHorseRacing(state) {
   const myBet = state.bets?.[myId];
 
   if (state.phase === 'betting') {
+    const sorted = [...horses].sort((a,b) => a.scratched ? 1 : b.scratched ? -1 : a.odds - b.odds);
+    const fav = sorted.find(h => !h.scratched);
     el.innerHTML = `
       <div class="race-header-info">
         <div class="race-header-left">
           <span class="race-num-badge">R${state.raceNumber || ''}</span>
           <span class="race-dist">${state.distance || ''}m</span>
+          <span class="race-condition">${state.trackCondition || ''}</span>
         </div>
         <div class="race-header-right">
-          <span class="race-condition">${state.trackCondition || ''}</span>
           <span class="race-runners">${horses.filter(h=>!h.scratched).length} runners</span>
         </div>
       </div>
-      <div class="timer-bar"><div class="timer-fill" style="width:${(state.timer/25)*100}%"></div></div>
-      <div class="timer-text">${state.timer}s to place bets</div>
 
-      <div class="horse-select-grid">
-        ${[...horses].sort((a,b) => a.scratched ? 1 : b.scratched ? -1 : a.odds - b.odds).map(h => {
+      <div class="hr-timer-ring">
+        <svg viewBox="0 0 60 60" width="48" height="48">
+          <circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="4"/>
+          <circle cx="30" cy="30" r="26" fill="none" stroke="${state.timer <= 5 ? 'var(--red)' : 'var(--gold)'}" stroke-width="4"
+            stroke-dasharray="${2*Math.PI*26}" stroke-dashoffset="${2*Math.PI*26*(1 - state.timer/25)}"
+            stroke-linecap="round" transform="rotate(-90 30 30)" style="transition:stroke-dashoffset 1s linear"/>
+          <text x="30" y="34" text-anchor="middle" fill="${state.timer <= 5 ? 'var(--red)' : '#fff'}" font-size="16" font-weight="900">${state.timer}</text>
+        </svg>
+        <span class="hr-timer-label">PLACE BETS</span>
+      </div>
+
+      <div class="hr-race-card">
+        ${sorted.map((h, si) => {
+          const origIdx = horses.indexOf(h);
           if (h.scratched) return `
-            <div class="horse-select-btn" style="opacity:0.3;pointer-events:none;border-left:4px solid #666">
-              <div class="horse-select-name"><s>${h.name}</s> <span style="color:var(--red);font-size:9px;font-weight:800">SCR</span></div>
+            <div class="hr-runner hr-scratched">
+              <span class="hr-r-num" style="background:#666">${origIdx+1}</span>
+              <div class="hr-r-details"><span class="hr-r-name"><s>${h.name}</s></span></div>
+              <span class="hr-r-scr">SCR</span>
             </div>`;
+          const isSel = hrSelectedHorse === h.id;
+          const isFav = h === fav;
           return `
-          <div class="horse-select-btn ${hrSelectedHorse === h.id ? 'selected' : ''}"
-            onclick="hrSelectedHorse=${h.id}; renderHorseRacing(window._hrState)"
-            style="border-left: 4px solid ${h.color}">
-            <div class="horse-select-name">${h.name}</div>
-            ${h.jockey ? `<div class="horse-jockey-name">${h.jockey}</div>` : ''}
-            <div class="horse-select-meta">
-              <span class="horse-select-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">$${h.odds.toFixed(2)}</span>
-              <span class="horse-style-tag">${h.styleDesc || ''}${h.temperament ? ' · ' + h.temperament : ''}</span>
+          <div class="hr-runner ${isSel ? 'hr-selected' : ''} ${isFav ? 'hr-fav' : ''}"
+            onclick="hrSelectedHorse=${h.id}; renderHorseRacing(window._hrState)">
+            <span class="hr-r-num" style="background:${h.color}">${origIdx+1}</span>
+            <div class="hr-r-details">
+              <div class="hr-r-name">${h.name}${isFav ? ' <span class="hr-fav-tag">FAV</span>' : ''}</div>
+              <div class="hr-r-sub">${h.jockey || ''} <span class="hr-r-style">${h.styleDesc || ''}</span></div>
+            </div>
+            <div class="hr-r-odds-col">
+              <div class="hr-r-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">$${h.odds.toFixed(2)}</div>
             </div>
           </div>`;
         }).join('')}
       </div>
 
       ${!myBet ? `
-        <div class="bet-controls">
-          <div class="bet-amount-display">$${hrBetAmount}</div>
-          <div class="quick-amounts">
-            ${[10,25,50,100].map(v => `
-              <button class="chip-btn chip-${v} ${hrBetAmount === v ? 'selected' : ''}"
-                onclick="hrBetAmount=${v}; renderHorseRacing(window._hrState)">${v}</button>
+        <div class="hr-bet-panel">
+          <div class="hr-chip-row">
+            ${[10,25,50,100,250].map(v => `
+              <button class="hr-chip ${hrBetAmount === v ? 'hr-chip-active' : ''}"
+                onclick="hrBetAmount=${v}; renderHorseRacing(window._hrState)">$${v}</button>
             `).join('')}
           </div>
-          <button class="btn btn-gold btn-block" onclick="placeHorseBet()"
-            ${!hrSelectedHorse ? 'disabled style="opacity:0.5"' : ''}>
-            ${hrSelectedHorse ? `BET ON ${horses.find(h=>h.id===hrSelectedHorse)?.name}` : 'SELECT A HORSE'}
+          <button class="hr-place-bet ${!hrSelectedHorse ? 'disabled' : ''}" onclick="placeHorseBet()"
+            ${!hrSelectedHorse ? 'disabled' : ''}>
+            ${hrSelectedHorse ?
+              `BET $${hrBetAmount} ON ${horses.find(h=>h.id===hrSelectedHorse)?.name?.split(' ')[1] || horses.find(h=>h.id===hrSelectedHorse)?.name} @ $${horses.find(h=>h.id===hrSelectedHorse)?.odds.toFixed(2)}`
+              : 'TAP A HORSE TO BET'}
           </button>
         </div>
       ` : `
-        <div class="status-msg success">
-          Bet $${myBet.amount} on ${horses.find(h=>h.id===myBet.horseId)?.name} @ $${myBet.lockedAtOdds ? myBet.lockedAtOdds.toFixed(2) : '?'}
+        <div class="hr-bet-confirmed">
+          <div class="hr-bet-tick">✓</div>
+          <div class="hr-bet-info">
+            <div class="hr-bet-horse">${horses.find(h=>h.id===myBet.horseId)?.name}</div>
+            <div class="hr-bet-detail">$${myBet.amount} @ $${myBet.lockedAtOdds ? myBet.lockedAtOdds.toFixed(2) : '?'} · Potential win: $${myBet.lockedAtOdds ? Math.round(myBet.amount * myBet.lockedAtOdds) : '?'}</div>
+          </div>
         </div>
       `}
     `;
@@ -727,34 +749,76 @@ function renderHorseRacing(state) {
     const isStarting = state.phase === 'starting';
     const isLoading = state.phase === 'loading';
     const atGate = isStarting || isLoading;
+    const leaderPos = Math.max(...horses.map(h => h.position || 0), 0);
+    const progressPct = Math.min(100, Math.round(leaderPos));
+
+    // Show my horse status prominently at top
+    const myHorse = myBet ? horses.find(h => h.id === myBet.horseId) : null;
+    const myPos = myHorse && state.livePositions ? state.livePositions.find(lp => lp.id === myHorse.id) : null;
+
+    // Only show top runners + my horse during race to avoid scroll
+    const activeHorses = horses.filter(h => !h.scratched);
+    let displayHorses;
+    if (isRacing && activeHorses.length > 8) {
+      const topIds = (state.livePositions || []).slice(0, 6).map(lp => lp.id);
+      if (myBet && !topIds.includes(myBet.horseId)) topIds.push(myBet.horseId);
+      displayHorses = horses.filter(h => topIds.includes(h.id) || h.scratched === false && horses.indexOf(h) < 6);
+      // Limit to max 8
+      displayHorses = displayHorses.slice(0, 8);
+    } else {
+      displayHorses = horses;
+    }
 
     el.innerHTML = `
-      ${isLoading ? `<div class="race-starting-banner">LOADING BARRIERS</div>` : ''}
-      ${isStarting ? `<div class="race-starting-banner" style="color:var(--red)">GATES OPENING!</div>` : ''}
+      <div class="hr-race-live-header">
+        <div class="hr-live-left">
+          <span class="hr-live-badge ${isRacing ? 'hr-live-on' : ''}">
+            ${isLoading ? 'LOADING' : isStarting ? 'GATES' : isRacing ? 'LIVE' : 'RESULT'}
+          </span>
+          <span class="hr-live-race">R${state.raceNumber || ''} · ${state.distance || ''}m</span>
+        </div>
+        ${isRacing ? `<div class="hr-live-progress">
+          <div class="hr-live-progress-fill" style="width:${progressPct}%"></div>
+          <span class="hr-live-pct">${progressPct}%</span>
+        </div>` : ''}
+      </div>
+
+      ${myHorse && (isRacing || atGate) ? `
+        <div class="hr-my-status ${myPos && myPos.pos <= 3 ? 'hr-my-podium' : ''}">
+          <span class="hr-my-silk" style="background:${myHorse.color}">${horses.indexOf(myHorse)+1}</span>
+          <div class="hr-my-info">
+            <div class="hr-my-name">${myHorse.name}</div>
+            <div class="hr-my-detail">${myPos ? `Position: ${myPos.pos}${myPos.pos===1?'st':myPos.pos===2?'nd':myPos.pos===3?'rd':'th'}${myPos.margin > 0 ? ' · '+myPos.margin+'L behind' : ' · LEADING'}` : 'At the gates'}</div>
+          </div>
+          <div class="hr-my-bet-info">$${myBet.amount}<br><span style="font-size:9px;opacity:0.7">@ $${myBet.lockedAtOdds?.toFixed(2) || '?'}</span></div>
+        </div>
+      ` : ''}
+
       ${commentary ? `<div class="race-commentary">${commentary}</div>` : ''}
 
       <div class="race-track">
-        ${horses.map((h, i) => {
+        ${displayHorses.map((h, di) => {
+          const i = horses.indexOf(h);
           const isMyHorse = myBet && myBet.horseId === h.id;
+          const pos = state.livePositions?.find(lp => lp.id === h.id);
           return `
           <div class="horse-lane ${isMyHorse ? 'my-horse-lane' : ''}">
             <div class="horse-info">
               <div class="horse-number-badge" style="background:${h.color}">${i + 1}</div>
               <div>
-                <div class="horse-name" style="color:${h.color}">${h.name}${isMyHorse ? ' ⭐' : ''}</div>
-                <div class="horse-odds">${h.odds}:1${isMyHorse ? ' · YOUR BET' : ''}</div>
+                <div class="horse-name" style="color:${h.color}">${h.name}</div>
+                <div class="horse-odds">${pos ? '#'+pos.pos : ''}</div>
               </div>
             </div>
             <div class="track-lane" style="background:linear-gradient(90deg, ${isMyHorse ? '#2a2500' : '#2a1f0f'}, ${isMyHorse ? '#4a3800' : '#3d2b1a'})">
               <div class="finish-line"></div>
-              <div class="track-lane-grass"></div>
               <div class="horse-marker ${isRacing ? 'racing' : ''} ${state.winner === h.id ? 'winner' : ''} ${atGate ? 'at-gate' : ''} ${isMyHorse && isRacing ? 'my-horse-marker' : ''}"
-                style="left:calc(${atGate ? 2 : Math.min(h.position || 0, 93)}% - 10px); ${isLoading && !h.gateLoaded ? 'opacity:0.3' : ''}"
+                style="left:calc(${atGate ? 2 : Math.min(h.position || 0, 93)}% - 10px); ${isLoading && !h.gateLoaded ? 'opacity:0.3' : ''}">
                 <svg viewBox="0 0 28 20" width="28" height="20">
                   <path d="M4 16 L7 10 L9 11 L11 6 L14 5 L18 4 L22 4 L25 5 L27 4 L27 6 L25 7 L23 9 L22 14 L24 16 L22 16 L20 12 L16 11 L13 13 L11 16 L9 16 L12 11 L9 14 L7 16 Z"
                     fill="${h.color}" stroke="${isMyHorse ? '#ffd700' : 'rgba(0,0,0,0.3)'}" stroke-width="${isMyHorse ? '1' : '0.3'}"/>
                   <circle cx="26" cy="5.5" r="1" fill="#fff"/>
-                  ${isMyHorse ? '<text x="14" y="9" text-anchor="middle" font-size="6" font-weight="bold" fill="#fff">' + (i+1) + '</text>' : ''}
+                  <text x="15" y="10" text-anchor="middle" font-size="7" font-weight="bold" fill="#fff" stroke="#000" stroke-width="0.3">${i+1}</text>
                 </svg>
               </div>
             </div>
@@ -762,41 +826,33 @@ function renderHorseRacing(state) {
         }).join('')}
       </div>
 
-      ${state.livePositions && isRacing ? `
-        <div class="live-positions-bar">
-          ${state.livePositions.slice(0, 5).map((lp, i) => {
-            const h = horses.find(hh => hh.id === lp.id);
-            if (!h) return '';
-            const isMyHorse = myBet && myBet.horseId === h.id;
-            return `<span class="live-pos-entry ${isMyHorse ? 'my-horse' : ''}">
-              <span class="live-pos-num">${i+1}</span>
-              <span class="live-pos-silk" style="background:${h.color}"></span>
-              <span class="live-pos-name">${h.name.split(' ')[1] || h.name}</span>
-              ${lp.margin > 0 ? `<span class="live-pos-margin">${lp.margin < 1 ? 'NK' : lp.margin < 3 ? '1L' : Math.round(lp.margin/2.5)+'L'}</span>` : ''}
-            </span>`;
-          }).join('')}
-        </div>
-      ` : ''}
-
       ${state.phase === 'result' ? `
-        <div class="race-result-box">
-          <div class="race-winner-name" style="color:${horses.find(h=>h.id===state.winner)?.color}">
-            🏆 ${horses.find(h=>h.id===state.winner)?.name}
+        <div class="hr-result-card">
+          <div class="hr-result-header">RACE ${state.raceNumber || ''} RESULT</div>
+          <div class="hr-result-places">
+            ${(state.places || []).slice(0, 3).map((pid, pi) => {
+              const ph = horses.find(hh => hh.id === pid);
+              const margin = state.margins?.[pi] || 0;
+              const marginTxt = pi === 0 ? '' : margin < 0.5 ? 'Nose' : margin < 1.5 ? 'Short Head' : margin < 3 ? '1 Length' : Math.round(margin/2.5) + ' Lengths';
+              const labels = ['1ST', '2ND', '3RD'];
+              const bgColors = ['rgba(255,215,0,0.15)', 'rgba(192,192,192,0.1)', 'rgba(160,82,45,0.1)'];
+              const borderColors = ['var(--gold)', '#999', '#a0522d'];
+              return `<div class="hr-result-place" style="background:${bgColors[pi]};border-left:3px solid ${borderColors[pi]}">
+                <span class="hr-result-label" style="color:${borderColors[pi]}">${labels[pi]}</span>
+                <span class="hr-result-silk" style="background:${ph?.color}">${horses.indexOf(ph)+1}</span>
+                <span class="hr-result-name">${ph?.name || ''}</span>
+                <span class="hr-result-margin">${marginTxt}</span>
+                <span class="hr-result-odds">$${(ph?.lockedOdds||ph?.odds||0).toFixed(2)}</span>
+              </div>`;
+            }).join('')}
           </div>
-          ${state.places ? `
-            <div class="race-places">
-              ${state.places.slice(0, 3).map((pid, i) => {
-                const ph = horses.find(hh => hh.id === pid);
-                const labels = ['1ST', '2ND', '3RD'];
-                const colors = ['var(--gold)', '#aaa', '#a0522d'];
-                return `<span class="race-place-entry"><span class="race-place-label" style="color:${colors[i]}">${labels[i]}</span> ${ph?.name || ''}</span>`;
-              }).join('')}
+          ${myBet ? `
+            <div class="hr-result-mybet ${myBet.won ? 'hr-result-win' : 'hr-result-loss'}">
+              ${myBet.won
+                ? `<div class="hr-win-amount">+$${myBet.winAmount}</div><div class="hr-win-sub">Winner! Paid $${myBet.lockedAtOdds?.toFixed(2) || '?'}</div>`
+                : `<div class="hr-loss-msg">Your horse finished ${state.livePositions?.find(lp=>lp.id===myBet.horseId)?.pos || '?'}${['st','nd','rd'][((state.livePositions?.find(lp=>lp.id===myBet.horseId)?.pos||4)-1)]||'th'}</div>`
+              }
             </div>
-          ` : ''}
-          ${myBet?.won ? `
-            <div class="win-display">You won $${myBet.winAmount}!</div>
-          ` : myBet ? `
-            <div style="color:var(--red);font-size:14px;margin-top:4px">Your horse didn't place</div>
           ` : ''}
         </div>
       ` : ''}
