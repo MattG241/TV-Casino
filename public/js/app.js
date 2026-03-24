@@ -619,7 +619,7 @@ function renderHorseRacing(state) {
       <div class="timer-text">${state.timer}s to place bets</div>
 
       <div class="horse-select-grid">
-        ${horses.map(h => {
+        ${[...horses].sort((a,b) => a.scratched ? 1 : b.scratched ? -1 : a.odds - b.odds).map(h => {
           if (h.scratched) return `
             <div class="horse-select-btn" style="opacity:0.3;pointer-events:none;border-left:4px solid #666">
               <div class="horse-select-name"><s>${h.name}</s> <span style="color:var(--red);font-size:9px;font-weight:800">SCR</span></div>

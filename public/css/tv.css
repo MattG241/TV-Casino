@@ -796,12 +796,23 @@ html, body {
 
 .tab-countdown.urgent { color: var(--red); animation: livePulse 0.8s infinite; }
 
+@keyframes tabScroll {
+  0%, 10% { transform: translateY(0); }
+  45%, 55% { transform: translateY(var(--scroll-dist, 0px)); }
+  90%, 100% { transform: translateY(0); }
+}
+
 .tab-odds-board {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-top: none;
-  overflow-y: auto;
+  overflow: hidden;
   max-height: 55vh;
+  position: relative;
+}
+
+.tab-odds-inner {
+  animation: tabScroll 12s ease-in-out infinite;
 }
 
 .tab-board-header {

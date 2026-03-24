@@ -744,6 +744,14 @@ const games = {
         gateLoaded: false,
         scratched: false,
       }));
+      // Real-ish race duration scaling (compressed to ~15-50s game time)
+      // Real: 1000m=57s, 1200m=70s, 1600m=95s, 2000m=120s, 2400m=145s, 3200m=195s
+      // Game: divide by ~4 so 1000m≈15s, 1600m≈24s, 2400m≈36s, 3200m≈50s
+      const raceDuration = Math.round(distance * 0.015);
+      // Speed per tick to finish in raceDuration seconds at 100ms ticks
+      const totalTicks = raceDuration * 10;
+      const baseSpeed = 100 / totalTicks; // base speed to finish on time
+
       room.gameState = {
         phase: 'betting',
         horses,
@@ -752,8 +760,10 @@ const games = {
         winner: null,
         raceNumber: room._raceNumber,
         distance,
-        commentary: `Race ${room._raceNumber} — ${distance}m. The runners are being paraded.`,
-        speak: `Race ${room._raceNumber}. ${distance} meters. The runners are being paraded. Place your bets now.`,
+        raceDuration,
+        baseSpeed,
+        commentary: `Race ${room._raceNumber} — ${distance}m — ${horses.filter(h=>!h.scratched).length} runners`,
+        speak: `Race ${room._raceNumber}. ${distance} meters. ${numHorses} runners. Place your bets now.`,
       };
 
       // Random late scratching (15% chance per race, max 1-2 horses, never scratch all)
@@ -891,11 +901,13 @@ const games = {
         let finished = false;
 
         for (const horse of gs.horses) {
-          // Slower movement for longer race (~15-20 seconds)
-          const randomBurst = Math.random() * 2.5;
-          const oddsEdge = (10 - horse.baseOdds) * 0.04;
-          const surge = Math.random() < 0.06 ? (Math.random() * 4) : 0;
-          horse.position += 0.8 + randomBurst + oddsEdge + surge;
+          if (horse.scratched) continue;
+          // Speed scaled by distance — longer races = slower per tick
+          const spd = gs.baseSpeed || 0.7;
+          const randomVar = (Math.random() - 0.3) * spd * 1.5;
+          const oddsEdge = (10 - horse.baseOdds) * spd * 0.03;
+          const surge = Math.random() < 0.04 ? (Math.random() * spd * 4) : 0;
+          horse.position += spd + randomVar + oddsEdge + surge;
 
           if (horse.position > leaderPos) {
             secondPos = leaderPos;
@@ -923,9 +935,10 @@ const games = {
         }
         lastLeaderId = leaderId;
 
-        // Dynamic commentary based on race progress
-        const avgPos = gs.horses.reduce((s, h) => s + h.position, 0) / gs.horses.length;
-        if (tickCount % 15 === 10 && !gs.speak) {
+        // Dynamic commentary — every ~3 seconds regardless of race length
+        const avgPos = gs.horses.filter(h => !h.scratched).reduce((s, h) => s + h.position, 0) / gs.horses.filter(h => !h.scratched).length;
+        const commentInterval = 30; // every 30 ticks = 3 seconds
+        if (tickCount % commentInterval === Math.floor(commentInterval / 2) && !gs.speak) {
           const leader = gs.horses.find(h => h.id === leaderId);
           const lines = games.horseracing._getCommentary(avgPos, leader, gap, gs.horses);
           gs.commentary = lines.text;

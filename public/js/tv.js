@@ -723,6 +723,7 @@ function renderTVHorseRacing(state) {
             <span class="tab-col-name">RUNNER</span>
             <span class="tab-col-odds">ODDS</span>
           </div>
+          <div class="tab-odds-inner" style="--scroll-dist: ${sorted.length > 8 ? -(sorted.length - 8) * 32 + 'px' : '0px'}">
           ${sorted.map((h, i) => {
             const origIdx = horses.indexOf(h);
             const betOnThis = Object.values(state.bets||{}).filter(b=>b.horseId===h.id).length;
@@ -745,6 +746,7 @@ function renderTVHorseRacing(state) {
               </span>
             </div>`;
           }).join('')}
+          </div>
         </div>
         ${Object.keys(state.bets||{}).length > 0 ? `
           <div class="tab-bets-bar">
