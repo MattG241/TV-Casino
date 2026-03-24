@@ -660,6 +660,10 @@ function pokerAction(action, amount) {
 
 let hrSelectedHorse = null;
 let hrBetAmount = 25;
+let hrBetType = 'win'; // 'win', 'place', 'trifecta'
+let hrExpandedHorse = null; // form guide expanded
+let hrTrifecta = [null, null, null]; // [1st, 2nd, 3rd]
+let hrTrifectaSlot = 0; // which slot we're filling
 
 function renderHorseRacing(state) {
   const el = document.getElementById('horseracingContent');
@@ -669,77 +673,211 @@ function renderHorseRacing(state) {
   if (state.phase === 'betting') {
     const sorted = [...horses].sort((a,b) => a.scratched ? 1 : b.scratched ? -1 : a.odds - b.odds);
     const fav = sorted.find(h => !h.scratched);
+    const activeCount = horses.filter(h => !h.scratched).length;
+
+    // Get bet type tab label and handle trifecta display
+    const isTri = hrBetType === 'trifecta';
+    const triLabels = ['1ST', '2ND', '3RD'];
+    const triNames = hrTrifecta.map(id => id ? horses.find(h=>h.id===id)?.name?.split(' ').pop() : '---');
+
     el.innerHTML = `
-      <div class="race-header-info">
-        <div class="race-header-left">
-          <span class="race-num-badge">R${state.raceNumber || ''}</span>
-          <span class="race-dist">${state.distance || ''}m</span>
-          <span class="race-condition">${state.trackCondition || ''}${state.trackBias && state.trackBias !== 'Neutral' ? ' · ' + state.trackBias + ' bias' : ''}</span>
+      <div class="sb-venue-header">
+        <div class="sb-venue-top">
+          <div class="sb-venue-icon">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#00c853" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </div>
+          <div class="sb-venue-info">
+            <div class="sb-venue-name">Sandown</div>
+            <div class="sb-venue-meta">
+              <span class="sb-race-badge">R${state.raceNumber || ''}</span>
+              <span>R1</span><span>R2</span><span>R3</span><span>R4</span>
+            </div>
+          </div>
+          <div class="sb-timer-pill ${state.timer <= 5 ? 'sb-timer-urgent' : ''}">
+            <svg viewBox="0 0 36 36" width="28" height="28">
+              <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2.5"/>
+              <circle cx="18" cy="18" r="15" fill="none" stroke="${state.timer <= 5 ? '#ff1744' : '#00c853'}" stroke-width="2.5"
+                stroke-dasharray="${2*Math.PI*15}" stroke-dashoffset="${2*Math.PI*15*(1 - state.timer/25)}"
+                stroke-linecap="round" transform="rotate(-90 18 18)" style="transition:stroke-dashoffset 1s linear"/>
+            </svg>
+            <span class="sb-timer-num">${state.timer}s</span>
+          </div>
         </div>
-        <div class="race-header-right">
-          <span class="race-runners">${horses.filter(h=>!h.scratched).length} runners</span>
+        <div class="sb-race-detail">
+          R${state.raceNumber} Sportsbet Race Preview Hcp &middot; ${state.distance}m &middot; ${state.trackCondition}${state.trackBias && state.trackBias !== 'Neutral' ? ' &middot; ' + state.trackBias + ' bias' : ''} &middot; ${activeCount} runners
         </div>
       </div>
 
-      <div class="hr-timer-ring">
-        <svg viewBox="0 0 60 60" width="48" height="48">
-          <circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="4"/>
-          <circle cx="30" cy="30" r="26" fill="none" stroke="${state.timer <= 5 ? 'var(--red)' : 'var(--gold)'}" stroke-width="4"
-            stroke-dasharray="${2*Math.PI*26}" stroke-dashoffset="${2*Math.PI*26*(1 - state.timer/25)}"
-            stroke-linecap="round" transform="rotate(-90 30 30)" style="transition:stroke-dashoffset 1s linear"/>
-          <text x="30" y="34" text-anchor="middle" fill="${state.timer <= 5 ? 'var(--red)' : '#fff'}" font-size="16" font-weight="900">${state.timer}</text>
-        </svg>
-        <span class="hr-timer-label">PLACE BETS</span>
+      <div class="sb-offers-bar">
+        <span class="sb-offers-icon">&#9733;</span> My Offers on this Race
       </div>
 
-      <div class="hr-race-card">
+      <div class="sb-bet-tabs">
+        <button class="sb-tab ${hrBetType==='win' ? 'sb-tab-active' : ''}" onclick="hrBetType='win'; hrTrifecta=[null,null,null]; hrTrifectaSlot=0; renderHorseRacing(window._hrState)">Win or Place</button>
+        <button class="sb-tab ${hrBetType==='trifecta' ? 'sb-tab-active' : ''}" onclick="hrBetType='trifecta'; hrSelectedHorse=null; hrTrifecta=[null,null,null]; hrTrifectaSlot=0; renderHorseRacing(window._hrState)">Trifecta</button>
+      </div>
+
+      ${isTri ? `
+        <div class="sb-trifecta-bar">
+          ${hrTrifecta.map((id, si) => `
+            <div class="sb-tri-slot ${hrTrifectaSlot === si ? 'sb-tri-active' : ''} ${id ? 'sb-tri-filled' : ''}"
+              onclick="hrTrifectaSlot=${si}; renderHorseRacing(window._hrState)">
+              <div class="sb-tri-label">${triLabels[si]}</div>
+              <div class="sb-tri-pick">${triNames[si]}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      <div class="sb-runner-header">
+        <span class="sb-rh-left">Race overview by Best Bets</span>
+        <span class="sb-rh-win">Win</span>
+        <span class="sb-rh-place">Place</span>
+      </div>
+
+      <div class="sb-race-card">
         ${sorted.map((h, si) => {
           const origIdx = horses.indexOf(h);
           if (h.scratched) return `
-            <div class="hr-runner hr-scratched">
-              <span class="hr-r-num" style="background:#666">${origIdx+1}</span>
-              <div class="hr-r-details"><span class="hr-r-name"><s>${h.name}</s></span></div>
-              <span class="hr-r-scr">SCR</span>
+            <div class="sb-runner sb-scratched">
+              <div class="sb-r-main">
+                <span class="sb-r-num" style="background:#555">${origIdx+1}</span>
+                <div class="sb-r-info"><span class="sb-r-name"><s>${h.name}</s></span></div>
+                <span class="sb-r-scr">SCR</span>
+              </div>
             </div>`;
-          const isSel = hrSelectedHorse === h.id;
+
           const isFav = h === fav;
+          const isExpanded = hrExpandedHorse === h.id;
+          const career = h.career || { starts: 0, wins: 0, seconds: 0, thirds: 0 };
+          const isSel = (!isTri && hrSelectedHorse === h.id);
+          const triSlotIdx = hrTrifecta.indexOf(h.id);
+          const isInTri = triSlotIdx >= 0;
+          const winOdds = h.odds.toFixed(2);
+          const placeOdds = (h.placeOdds || Math.max(1.1, h.odds * 0.35)).toFixed(2);
+
+          // Win/Place bet type radio for this horse
+          const isWinSel = isSel && hrBetType === 'win';
+          const isPlaceSel = isSel && hrBetType === 'place';
+
           return `
-          <div class="hr-runner ${isSel ? 'hr-selected' : ''} ${isFav ? 'hr-fav' : ''}"
-            onclick="hrSelectedHorse=${h.id}; renderHorseRacing(window._hrState)">
-            <span class="hr-r-num" style="background:${h.color}">${origIdx+1}</span>
-            <div class="hr-r-details">
-              <div class="hr-r-name">${h.name}${isFav ? ' <span class="hr-fav-tag">FAV</span>' : ''}</div>
-              <div class="hr-r-sub">${h.jockey || ''} · B${h.barrier || origIdx+1} <span class="hr-r-style">${h.styleDesc || ''}</span></div>
-              ${h.form && h.form.length > 0 ? `<div class="hr-r-form">${h.form.map(f => `<span class="hr-form-dot ${f===1?'hr-f1':f===2?'hr-f2':f===3?'hr-f3':f<=5?'hr-f5':''}">${f}</span>`).join('')}</div>` : ''}
+          <div class="sb-runner ${isSel ? 'sb-selected' : ''} ${isInTri ? 'sb-tri-selected' : ''}">
+            <div class="sb-r-main" onclick="hrExpandedHorse = hrExpandedHorse===${h.id} ? null : ${h.id}; renderHorseRacing(window._hrState)">
+              <span class="sb-r-num" style="background:${h.color}">${origIdx+1}</span>
+              <div class="sb-r-info">
+                <div class="sb-r-name-row">
+                  <span class="sb-r-name">${h.name}</span>
+                  ${isFav ? '<span class="sb-fav-tag">FAV</span>' : ''}
+                  ${isInTri ? `<span class="sb-tri-tag">${triLabels[triSlotIdx]}</span>` : ''}
+                </div>
+                <div class="sb-r-sub">
+                  (${h.barrier || origIdx+1}) ${h.weight || 57}kg ${h.jockey || ''}</div>
+                <div class="sb-r-form-line">
+                  ${h.form && h.form.length > 0 ? h.form.map(f => `<span class="sb-form-num ${f===1?'sb-f1':f===2?'sb-f2':f===3?'sb-f3':''}">${f}</span>`).join('') : '<span class="sb-no-form">No form</span>'}
+                  <span class="sb-r-style-tag">${h.styleDesc || ''}</span>
+                </div>
+              </div>
+              <div class="sb-r-odds-group">
+                <button class="sb-odds-btn ${isWinSel ? 'sb-odds-active' : ''} ${h.odds < h.baseOdds ? 'sb-odds-short' : h.odds > h.baseOdds ? 'sb-odds-drift' : ''}"
+                  onclick="event.stopPropagation(); ${isTri ? `hrSelectTrifecta(${h.id})` : `hrBetType='win'; hrSelectedHorse=${h.id}`}; renderHorseRacing(window._hrState)">
+                  $${winOdds}
+                </button>
+                <button class="sb-odds-btn sb-odds-place ${isPlaceSel ? 'sb-odds-active' : ''}"
+                  onclick="event.stopPropagation(); ${isTri ? `hrSelectTrifecta(${h.id})` : `hrBetType='place'; hrSelectedHorse=${h.id}`}; renderHorseRacing(window._hrState)">
+                  $${placeOdds}
+                </button>
+              </div>
             </div>
-            <div class="hr-r-odds-col">
-              <div class="hr-r-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">$${h.odds.toFixed(2)}</div>
-            </div>
+            ${isExpanded ? `
+              <div class="sb-r-expanded">
+                <div class="sb-form-table">
+                  <div class="sb-form-row sb-form-head">
+                    <span></span><span>Starts</span><span>1st</span><span>2nd</span><span>3rd</span><span>Win%</span>
+                  </div>
+                  <div class="sb-form-row">
+                    <span>Career</span>
+                    <span>${career.starts}</span>
+                    <span>${career.wins}</span>
+                    <span>${career.seconds}</span>
+                    <span>${career.thirds}</span>
+                    <span>${career.starts > 0 ? Math.round(career.wins/career.starts*100) : 0}%</span>
+                  </div>
+                  <div class="sb-form-row">
+                    <span>Distance</span>
+                    <span>${Math.max(1, career.starts - Math.floor(Math.random()*5))}</span>
+                    <span>${Math.max(0, career.wins - Math.floor(Math.random()*2))}</span>
+                    <span>${Math.max(0, career.seconds - Math.floor(Math.random()*2))}</span>
+                    <span>${career.thirds}</span>
+                    <span>-</span>
+                  </div>
+                  <div class="sb-form-row">
+                    <span>${state.trackCondition?.split(' ')[0] || 'Track'}</span>
+                    <span>${Math.max(1, Math.floor(career.starts * 0.6))}</span>
+                    <span>${Math.max(0, Math.floor(career.wins * 0.6))}</span>
+                    <span>${Math.max(0, Math.floor(career.seconds * 0.5))}</span>
+                    <span>${Math.max(0, Math.floor(career.thirds * 0.5))}</span>
+                    <span>-</span>
+                  </div>
+                </div>
+                <div class="sb-r-temperament">${h.temperament || ''} &middot; ${h.styleDesc || ''}</div>
+              </div>
+            ` : ''}
           </div>`;
         }).join('')}
       </div>
 
       ${!myBet ? `
-        <div class="hr-bet-panel">
-          <div class="hr-chip-row">
-            ${[10,25,50,100,250].map(v => `
-              <button class="hr-chip ${hrBetAmount === v ? 'hr-chip-active' : ''}"
-                onclick="hrBetAmount=${v}; renderHorseRacing(window._hrState)">$${v}</button>
-            `).join('')}
+        <div class="sb-bet-slip">
+          <div class="sb-slip-header">
+            <span>Bet Slip</span>
+            ${hrSelectedHorse || hrTrifecta.some(t=>t) ? `<span class="sb-slip-clear" onclick="hrSelectedHorse=null; hrTrifecta=[null,null,null]; hrTrifectaSlot=0; renderHorseRacing(window._hrState)">Clear</span>` : ''}
           </div>
-          <button class="hr-place-bet ${!hrSelectedHorse ? 'disabled' : ''}" onclick="placeHorseBet()"
-            ${!hrSelectedHorse ? 'disabled' : ''}>
-            ${hrSelectedHorse ?
-              `BET $${hrBetAmount} ON ${horses.find(h=>h.id===hrSelectedHorse)?.name?.split(' ')[1] || horses.find(h=>h.id===hrSelectedHorse)?.name} @ $${horses.find(h=>h.id===hrSelectedHorse)?.odds.toFixed(2)}`
-              : 'TAP A HORSE TO BET'}
-          </button>
+          ${hrSelectedHorse && !isTri ? (() => {
+            const selH = horses.find(h=>h.id===hrSelectedHorse);
+            const betOdds = hrBetType === 'place' ? (selH?.placeOdds||1.5) : (selH?.odds||1);
+            return `
+              <div class="sb-slip-selection">
+                <div class="sb-slip-type">${hrBetType === 'place' ? 'PLACE' : 'WIN'}</div>
+                <div class="sb-slip-horse">${selH?.name} — $${betOdds.toFixed(2)}</div>
+              </div>
+              <div class="sb-chip-row">
+                ${[10,25,50,100,250].map(v => `
+                  <button class="sb-chip ${hrBetAmount === v ? 'sb-chip-active' : ''}"
+                    onclick="hrBetAmount=${v}; renderHorseRacing(window._hrState)">$${v}</button>
+                `).join('')}
+              </div>
+              <button class="sb-place-bet" onclick="placeHorseBet()">
+                Add to Bet Slip &middot; $${hrBetAmount} returns $${(hrBetAmount * betOdds).toFixed(0)}
+              </button>`;
+          })() : ''}
+          ${isTri && hrTrifecta.every(t=>t) ? (() => {
+            const triH = hrTrifecta.map(id => horses.find(h=>h.id===id));
+            const triOdds = Math.round(triH[0].odds * triH[1].odds * triH[2].odds * 0.08 * 100) / 100;
+            return `
+              <div class="sb-slip-selection">
+                <div class="sb-slip-type">TRIFECTA</div>
+                <div class="sb-slip-horse">${triH.map((h,i) => `${i+1}. ${h.name}`).join(' / ')}</div>
+                <div class="sb-slip-odds">@ $${triOdds.toFixed(2)}</div>
+              </div>
+              <div class="sb-chip-row">
+                ${[5,10,25,50,100].map(v => `
+                  <button class="sb-chip ${hrBetAmount === v ? 'sb-chip-active' : ''}"
+                    onclick="hrBetAmount=${v}; renderHorseRacing(window._hrState)">$${v}</button>
+                `).join('')}
+              </div>
+              <button class="sb-place-bet" onclick="placeHorseBet()">
+                Add to Bet Slip &middot; $${hrBetAmount} returns $${(hrBetAmount * triOdds).toFixed(0)}
+              </button>`;
+          })() : isTri ? `<div class="sb-slip-hint">Select 1st, 2nd, 3rd to complete trifecta</div>` : ''}
+          ${!hrSelectedHorse && !isTri ? `<div class="sb-slip-hint">Select a runner to add to bet slip</div>` : ''}
         </div>
       ` : `
-        <div class="hr-bet-confirmed">
-          <div class="hr-bet-tick">✓</div>
-          <div class="hr-bet-info">
-            <div class="hr-bet-horse">${horses.find(h=>h.id===myBet.horseId)?.name}</div>
-            <div class="hr-bet-detail">$${myBet.amount} @ $${myBet.lockedAtOdds ? myBet.lockedAtOdds.toFixed(2) : '?'} · Potential win: $${myBet.lockedAtOdds ? Math.round(myBet.amount * myBet.lockedAtOdds) : '?'}</div>
+        <div class="sb-bet-confirmed">
+          <div class="sb-bet-tick">&#10003;</div>
+          <div class="sb-bet-info">
+            <div class="sb-bet-type-label">${(myBet.betType || 'win').toUpperCase()}</div>
+            <div class="sb-bet-horse-name">${myBet.betType === 'trifecta' ? myBet.trifecta?.map(id => horses.find(h=>h.id===id)?.name).join(' / ') : horses.find(h=>h.id===myBet.horseId)?.name}</div>
+            <div class="sb-bet-detail">$${myBet.amount} @ $${myBet.lockedAtOdds ? myBet.lockedAtOdds.toFixed(2) : '?'} &middot; Returns $${myBet.lockedAtOdds ? Math.round(myBet.amount * myBet.lockedAtOdds) : '?'}</div>
           </div>
         </div>
       `}
@@ -838,20 +976,26 @@ function renderHorseRacing(state) {
               const labels = ['1ST', '2ND', '3RD'];
               const bgColors = ['rgba(255,215,0,0.15)', 'rgba(192,192,192,0.1)', 'rgba(160,82,45,0.1)'];
               const borderColors = ['var(--gold)', '#999', '#a0522d'];
-              return `<div class="hr-result-place" style="background:${bgColors[pi]};border-left:3px solid ${borderColors[pi]}">
-                <span class="hr-result-label" style="color:${borderColors[pi]}">${labels[pi]}</span>
-                <span class="hr-result-silk" style="background:${ph?.color}">${horses.indexOf(ph)+1}</span>
-                <span class="hr-result-name">${ph?.name || ''}</span>
-                <span class="hr-result-margin">${marginTxt}</span>
-                <span class="hr-result-odds">$${(ph?.lockedOdds||ph?.odds||0).toFixed(2)}</span>
+              return `<div class="sb-result-place" style="background:${bgColors[pi]};border-left:3px solid ${borderColors[pi]}">
+                <span class="sb-result-label" style="color:${borderColors[pi]}">${labels[pi]}</span>
+                <span class="sb-result-silk" style="background:${ph?.color}">${horses.indexOf(ph)+1}</span>
+                <div class="sb-result-info">
+                  <div class="sb-result-name">${ph?.name || ''}</div>
+                  <div class="sb-result-jockey">${ph?.jockey || ''} &middot; (${ph?.barrier || ''}) ${ph?.weight || ''}kg</div>
+                </div>
+                <div class="sb-result-right">
+                  <div class="sb-result-margin">${marginTxt}</div>
+                  <div class="sb-result-odds">Win $${(ph?.lockedOdds||ph?.odds||0).toFixed(2)} / Pl $${(ph?.placeOdds||(ph?.odds*0.35)||0).toFixed(2)}</div>
+                </div>
               </div>`;
             }).join('')}
           </div>
           ${myBet ? `
-            <div class="hr-result-mybet ${myBet.won ? 'hr-result-win' : 'hr-result-loss'}">
+            <div class="sb-result-mybet ${myBet.won ? 'sb-result-win' : 'sb-result-loss'}">
+              <div class="sb-result-bet-type">${(myBet.betType || 'win').toUpperCase()} BET</div>
               ${myBet.won
-                ? `<div class="hr-win-amount">+$${myBet.winAmount}</div><div class="hr-win-sub">Winner! Paid $${myBet.lockedAtOdds?.toFixed(2) || '?'}</div>`
-                : `<div class="hr-loss-msg">Your horse finished ${state.livePositions?.find(lp=>lp.id===myBet.horseId)?.pos || '?'}${['st','nd','rd'][((state.livePositions?.find(lp=>lp.id===myBet.horseId)?.pos||4)-1)]||'th'}</div>`
+                ? `<div class="sb-win-amount">+$${myBet.winAmount}</div><div class="sb-win-sub">Paid $${myBet.lockedAtOdds?.toFixed(2) || '?'}</div>`
+                : `<div class="sb-loss-msg">${myBet.betType === 'trifecta' ? 'Trifecta did not land' : `Finished ${state.livePositions?.find(lp=>lp.id===myBet.horseId)?.pos || '?'}${['st','nd','rd'][((state.livePositions?.find(lp=>lp.id===myBet.horseId)?.pos||4)-1)]||'th'}`}</div>`
               }
             </div>
           ` : ''}
@@ -862,7 +1006,29 @@ function renderHorseRacing(state) {
   window._hrState = state;
 }
 
+function hrSelectTrifecta(horseId) {
+  // Remove if already selected in any slot
+  const existing = hrTrifecta.indexOf(horseId);
+  if (existing >= 0) {
+    hrTrifecta[existing] = null;
+    hrTrifectaSlot = existing;
+    return;
+  }
+  // Place in current slot
+  hrTrifecta[hrTrifectaSlot] = horseId;
+  // Advance to next empty slot
+  for (let i = 0; i < 3; i++) {
+    const next = (hrTrifectaSlot + 1 + i) % 3;
+    if (!hrTrifecta[next]) { hrTrifectaSlot = next; break; }
+  }
+}
+
 function placeHorseBet() {
-  if (!hrSelectedHorse) return showToast('Select a horse first');
-  socket.emit('horseracing:bet', { horseId: hrSelectedHorse, amount: hrBetAmount });
+  if (hrBetType === 'trifecta') {
+    if (!hrTrifecta.every(t => t)) return showToast('Select 1st, 2nd and 3rd');
+    socket.emit('horseracing:bet', { horseId: hrTrifecta[0], amount: hrBetAmount, betType: 'trifecta', trifecta: hrTrifecta });
+  } else {
+    if (!hrSelectedHorse) return showToast('Select a horse first');
+    socket.emit('horseracing:bet', { horseId: hrSelectedHorse, amount: hrBetAmount, betType: hrBetType });
+  }
 }

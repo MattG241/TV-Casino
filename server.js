@@ -827,17 +827,37 @@ const games = {
         const jockeyIdx = this._JOCKEY_NAMES.indexOf(jockey);
         const jockeySkill = jockeyIdx >= 0 ? 0.85 + (1 - jockeyIdx / this._JOCKEY_NAMES.length) * 0.15 : 0.8;
 
+        // Generate weight (54-62kg based on odds — favourites carry more weight)
+        const baseWeight = 54 + Math.round((10 - Math.min(baseOdds[i], 10)) * 0.8);
+        const weight = baseWeight + Math.floor(Math.random() * 3) - 1; // ±1kg randomness
+
+        // Generate career stats based on odds tier
+        const careerStarts = 8 + Math.floor(Math.random() * 30);
+        let winRate;
+        if (baseOdds[i] < 5) winRate = 0.22 + Math.random() * 0.18;
+        else if (baseOdds[i] < 10) winRate = 0.12 + Math.random() * 0.12;
+        else winRate = 0.03 + Math.random() * 0.08;
+        const careerWins = Math.max(0, Math.round(careerStarts * winRate));
+        const careerSeconds = Math.max(0, Math.round(careerStarts * (winRate * 0.7 + Math.random() * 0.05)));
+        const careerThirds = Math.max(0, Math.round(careerStarts * (winRate * 0.5 + Math.random() * 0.04)));
+
+        // Place odds (1/3 of win odds approximately, min 1.10)
+        const placeOdds = Math.round(Math.max(1.1, baseOdds[i] * 0.35) * 100) / 100;
+
         return {
           id: i + 1,
           name: generateHorseName(usedNames),
           color,
           baseOdds: baseOdds[i],
           odds: baseOdds[i],
+          placeOdds,
           position: 0,
           gateLoaded: false,
           scratched: false,
           style,
           styleDesc: this._STYLES[style].desc,
+          weight,
+          career: { starts: careerStarts, wins: careerWins, seconds: careerSeconds, thirds: careerThirds },
           stamina: 0.75 + Math.random() * 0.5,
           energy: 1.0,
           momentum: 0,
@@ -991,23 +1011,55 @@ const games = {
           // Gentler random drift (±0.3 instead of ±0.6)
           const drift = (Math.random() - 0.5) * 0.3;
           horse.odds = Math.round(Math.max(1.5, Math.min(50, horse.odds + drift)) * 10) / 10;
+          // Keep place odds in sync (~35% of win odds)
+          horse.placeOdds = Math.round(Math.max(1.1, horse.odds * 0.35) * 100) / 100;
         }
         recalculateOdds(room.gameState.horses, room.gameState.bets);
         broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       }, 2000);
     },
 
-    placeBet(room, playerId, horseId, amount) {
+    placeBet(room, playerId, horseId, amount, betType, trifectaSelections) {
       if (!room.gameState || room.gameState.phase !== 'betting') return;
       const player = room.players.find(p => p.id === playerId);
       amount = parseInt(amount);
       if (!player || !amount || amount <= 0 || amount > player.chips) return;
       if (room.gameState.bets[playerId]) return;
-      player.chips -= amount;
-      // Lock in the odds at the time of the bet — player gets these odds regardless of future movement
+
+      betType = betType || 'win'; // 'win', 'place', 'trifecta'
       const horse = room.gameState.horses.find(h => h.id === horseId);
-      const lockedAtOdds = horse ? horse.odds : 1;
-      room.gameState.bets[playerId] = { horseId, amount, lockedAtOdds };
+
+      if (betType === 'trifecta') {
+        // Validate trifecta selections: [1st, 2nd, 3rd]
+        if (!trifectaSelections || trifectaSelections.length !== 3) return;
+        const uniqueCheck = new Set(trifectaSelections);
+        if (uniqueCheck.size !== 3) return;
+        const allValid = trifectaSelections.every(id => room.gameState.horses.find(h => h.id === id && !h.scratched));
+        if (!allValid) return;
+
+        // Calculate trifecta odds (multiply individual odds × diminishing factor)
+        const triHorses = trifectaSelections.map(id => room.gameState.horses.find(h => h.id === id));
+        const trifectaOdds = Math.round(triHorses[0].odds * triHorses[1].odds * triHorses[2].odds * 0.08 * 100) / 100;
+
+        player.chips -= amount;
+        room.gameState.bets[playerId] = {
+          horseId: trifectaSelections[0], // primary horse for display
+          amount,
+          betType: 'trifecta',
+          trifecta: trifectaSelections,
+          lockedAtOdds: trifectaOdds,
+        };
+      } else if (betType === 'place') {
+        const lockedAtOdds = horse ? horse.placeOdds : 1;
+        player.chips -= amount;
+        room.gameState.bets[playerId] = { horseId, amount, betType: 'place', lockedAtOdds };
+      } else {
+        // Win bet (default)
+        const lockedAtOdds = horse ? horse.odds : 1;
+        player.chips -= amount;
+        room.gameState.bets[playerId] = { horseId, amount, betType: 'win', lockedAtOdds };
+      }
+
       recalculateOdds(room.gameState.horses, room.gameState.bets);
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
       broadcastToRoom(room, 'players:update', playerList(room));
@@ -1408,15 +1460,40 @@ const games = {
             gs.speak = `And it's ${winHorse.name} who takes the victory ${marginDesc} at odds of ${(winHorse.lockedOdds||winHorse.odds).toFixed(1)} to one!${jockeyCredit}${second ? ` ${second.name} in second.` : ''}`;
           }
 
+          // Determine top 3 horse IDs for place/trifecta payouts
+          const top3Ids = finalSorted.slice(0, 3).map(h => h.id);
+
           for (const [pid, bet] of Object.entries(gs.bets)) {
             const player = room.players.find(p => p.id === pid);
-            if (!player || !winHorse) continue;
-            if (bet.horseId === gs.winner) {
-              // Use the odds locked at bet placement time, not the final odds
-              const payoutOdds = bet.lockedAtOdds || winHorse.lockedOdds || winHorse.odds || 1;
-              player.chips += Math.round(bet.amount * payoutOdds);
-              bet.won = true;
-              bet.winAmount = Math.round(bet.amount * payoutOdds);
+            if (!player) continue;
+
+            if (bet.betType === 'trifecta') {
+              // Trifecta: exact order 1st, 2nd, 3rd must match
+              if (bet.trifecta &&
+                  bet.trifecta[0] === top3Ids[0] &&
+                  bet.trifecta[1] === top3Ids[1] &&
+                  bet.trifecta[2] === top3Ids[2]) {
+                const payoutOdds = bet.lockedAtOdds || 50;
+                player.chips += Math.round(bet.amount * payoutOdds);
+                bet.won = true;
+                bet.winAmount = Math.round(bet.amount * payoutOdds);
+              }
+            } else if (bet.betType === 'place') {
+              // Place: horse finishes top 3
+              if (top3Ids.includes(bet.horseId)) {
+                const payoutOdds = bet.lockedAtOdds || 1.5;
+                player.chips += Math.round(bet.amount * payoutOdds);
+                bet.won = true;
+                bet.winAmount = Math.round(bet.amount * payoutOdds);
+              }
+            } else {
+              // Win bet (default)
+              if (winHorse && bet.horseId === gs.winner) {
+                const payoutOdds = bet.lockedAtOdds || winHorse.lockedOdds || winHorse.odds || 1;
+                player.chips += Math.round(bet.amount * payoutOdds);
+                bet.won = true;
+                bet.winAmount = Math.round(bet.amount * payoutOdds);
+              }
             }
           }
           broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
@@ -1874,7 +1951,7 @@ io.on('connection', (socket) => {
 
   socket.on('horseracing:bet', (data) => {
     if (!data || typeof data !== 'object') return;
-    if (currentRoom?.currentGame === 'horseracing') games.horseracing.placeBet(currentRoom, playerId, data.horseId, data.amount);
+    if (currentRoom?.currentGame === 'horseracing') games.horseracing.placeBet(currentRoom, playerId, data.horseId, data.amount, data.betType, data.trifecta);
   });
 
   socket.on('disconnect', () => {
