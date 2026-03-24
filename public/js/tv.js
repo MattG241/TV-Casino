@@ -704,62 +704,98 @@ function renderTVHorseRacing(state) {
     }
   }
 
-  // ── TAB-style betting board ──
+  // ── Sky Racing split-screen betting board ──
   if (state.phase === 'betting') {
-    const sorted = [...horses].sort((a, b) => a.odds - b.odds);
+    const sorted = [...horses].sort((a, b) => a.scratched ? 1 : b.scratched ? -1 : a.odds - b.odds);
+    const trackNames = ['FLEMINGTON','RANDWICK','MOONEE VALLEY','CAULFIELD','ROSEHILL','EAGLE FARM','DOOMBEN','MORPHETTVILLE','ASCOT','SANDOWN'];
+    const trackName = trackNames[(state.raceNumber || 1) % trackNames.length];
+    const conditions = ['GOOD 4','SOFT 5','GOOD 3','FIRM 1','SOFT 6','HEAVY 8'];
+    const condition = conditions[Math.floor((state.raceNumber || 0) * 3.7) % conditions.length];
+
     el.innerHTML = `
-      <div class="tab-broadcast">
-        <div class="tab-header">
-          <div class="tab-logo">TV CASINO</div>
-          <div class="tab-race-info">
-            <span class="tab-race-num">RACE ${state.raceNumber || 1}</span>
-            <span class="tab-distance">${state.distance || 1600}m</span>
+      <div class="sky-full">
+        <!-- TOP BAR — green header like Sky Racing -->
+        <div class="sky-header-bar">
+          <div class="sky-hdr-left">
+            <span class="sky-hdr-tab">TAB</span>
+            <span class="sky-hdr-racenum">${state.raceNumber || 1}</span>
+            <div class="sky-hdr-venue">
+              <div class="sky-hdr-venue-name">${trackName} &nbsp;${state.distance || 1600}m</div>
+              <div class="sky-hdr-venue-sub">RACE ${state.raceNumber || 1} &bull; ${condition}</div>
+            </div>
           </div>
-          <div class="tab-countdown ${state.timer <= 5 ? 'urgent' : ''}">-${String(Math.floor(state.timer/60)).padStart(1,'0')}:${String(state.timer%60).padStart(2,'0')}</div>
-        </div>
-        <div class="tab-odds-board">
-          <div class="tab-board-header">
-            <span class="tab-col-num">#</span>
-            <span class="tab-col-name">RUNNER</span>
-            <span class="tab-col-odds">ODDS</span>
-          </div>
-          <div class="tab-odds-inner" style="--scroll-dist: ${sorted.length > 8 ? -(sorted.length - 8) * 32 + 'px' : '0px'}">
-          ${sorted.map((h, i) => {
-            const origIdx = horses.indexOf(h);
-            const betOnThis = Object.values(state.bets||{}).filter(b=>b.horseId===h.id).length;
-            if (h.scratched) return `
-            <div class="tab-row tab-scratched">
-              <span class="tab-col-num">
-                <span class="tab-silk" style="background:#666">${origIdx+1}</span>
-              </span>
-              <span class="tab-col-name"><s>${h.name}</s> <span class="tab-scr-tag">SCR</span></span>
-              <span class="tab-col-odds">—</span>
-            </div>`;
-            return `
-            <div class="tab-row ${i === 0 && !h.scratched ? 'tab-favourite' : ''} ${betOnThis > 0 ? 'tab-backed' : ''}">
-              <span class="tab-col-num">
-                <span class="tab-silk" style="background:${h.color}">${origIdx+1}</span>
-              </span>
-              <span class="tab-col-name">${h.name}</span>
-              <span class="tab-col-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">
-                $${h.odds.toFixed(2)}
-              </span>
-            </div>`;
-          }).join('')}
+          <div class="sky-hdr-right">
+            <div class="sky-hdr-timer ${state.timer <= 5 ? 'urgent' : ''}">${state.timer > 0 ? '-0:' + String(state.timer).padStart(2,'0') : 'OFF'}</div>
+            <div class="sky-hdr-brand">SKY<span>1</span></div>
           </div>
         </div>
-        ${Object.keys(state.bets||{}).length > 0 ? `
-          <div class="tab-bets-bar">
-            ${Object.entries(state.bets).map(([pid, bet]) => {
-              const p = players.find(pl => pl.id === pid);
-              const horse = horses.find(h => h.id === bet.horseId);
-              return `<span class="tab-bet-chip">${p?.name||'?'}: $${bet.amount} on #${horses.indexOf(horse)+1}</span>`;
+
+        <!-- MAIN SPLIT — odds left, 3d preview right -->
+        <div class="sky-split">
+          <div class="sky-odds-panel">
+            <div class="sky-odds-header">
+              <span class="sky-oh-num">#</span>
+              <span class="sky-oh-name">TAB</span>
+              <span class="sky-oh-odds">WIN</span>
+              <span class="sky-oh-barrier">BARRIER</span>
+            </div>
+            <div class="sky-odds-scroll" style="--scroll-dist: ${sorted.length > 10 ? -(sorted.length - 10) * 30 + 'px' : '0px'}">
+            ${sorted.map((h, i) => {
+              const origIdx = horses.indexOf(h);
+              const barrier = origIdx + 1;
+              const betOnThis = Object.values(state.bets||{}).filter(b=>b.horseId===h.id).length;
+              if (h.scratched) return `
+              <div class="sky-odds-row sky-scr">
+                <span class="sky-or-num">${origIdx+1}</span>
+                <span class="sky-or-odds" style="color:#888">SCR</span>
+                <span class="sky-or-name"><s>${h.name}</s></span>
+                <span class="sky-or-barrier">(${barrier})</span>
+              </div>`;
+              return `
+              <div class="sky-odds-row ${i === 0 ? 'sky-fav' : ''} ${betOnThis > 0 ? 'sky-backed' : ''}">
+                <span class="sky-or-num">${origIdx+1}</span>
+                <span class="sky-or-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds.toFixed(2)}</span>
+                <span class="sky-or-name" style="color:${h.color}">${h.name}</span>
+                <span class="sky-or-barrier">(${barrier})</span>
+              </div>`;
             }).join('')}
+            </div>
+            ${Object.keys(state.bets||{}).length > 0 ? `
+              <div class="sky-bets-strip">
+                ${Object.entries(state.bets).map(([pid, bet]) => {
+                  const p = players.find(pl => pl.id === pid);
+                  const horse = horses.find(h => h.id === bet.horseId);
+                  return `<span class="sky-bet-tag">${p?.name||'?'} → #${horses.indexOf(horse)+1} $${bet.amount}</span>`;
+                }).join('')}
+              </div>
+            ` : ''}
           </div>
-        ` : ''}
-        <div class="tab-commentary">${state.commentary || ''}</div>
+          <div class="sky-preview-panel">
+            <div class="sky-preview-3d" id="racePreview3d"></div>
+            <div class="sky-preview-info">${state.commentary || ''}</div>
+          </div>
+        </div>
+
+        <!-- BOTTOM TICKER -->
+        <div class="sky-ticker">
+          ${[1,2,3,4].map(n => {
+            const rn = (state.raceNumber||1) + n;
+            const tn = trackNames[(rn) % trackNames.length];
+            return `<span class="sky-tick-item"><strong>${rn}</strong> ${tn} <span class="sky-tick-time">${n*3} MIN</span></span>`;
+          }).join('')}
+        </div>
       </div>
     `;
+
+    // Init 3D preview in betting panel
+    const preview = document.getElementById('racePreview3d');
+    if (preview && typeof Race3D !== 'undefined' && !Race3D.isInitialized()) {
+      Race3D.init(preview);
+      Race3D.startRendering();
+    }
+    if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
+      Race3D.updateHorses(horses, 'betting');
+    }
     return;
   }
 
