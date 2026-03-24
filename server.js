@@ -722,9 +722,11 @@ const games = {
   horseracing: {
     start(room) {
       if (room.currentGame !== 'horseracing') return;
-      const colors = ['#c0392b', '#2980b9', '#d4a843', '#1a1a2e', '#27ae60', '#8e44ad', '#e67e22', '#16a085'];
+      const ALL_COLORS = ['#c0392b','#2980b9','#d4a843','#1a1a2e','#27ae60','#8e44ad','#e67e22','#16a085','#e84393','#636e72','#fdcb6e','#00b894','#6c5ce7','#d63031','#0984e3','#a29bfe'];
+      const numHorses = 4 + Math.floor(Math.random() * 13); // 4 to 16
+      const colors = ALL_COLORS.slice(0, numHorses);
       const usedNames = new Set();
-      const baseOdds = generateBaseOdds(8);
+      const baseOdds = generateBaseOdds(numHorses);
       const horses = colors.map((color, i) => ({
         id: i + 1,
         name: generateHorseName(usedNames),

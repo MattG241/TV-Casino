@@ -715,17 +715,18 @@ html, body {
 .tv-poker-seat.folded { opacity: 0.3; }
 .tv-poker-seat.winner { border-color: var(--green); box-shadow: 0 0 12px rgba(46,204,113,0.2); }
 
-/* ── TV Horse Racing ──────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════
+   TV Horse Racing — TAB / Sky Racing Broadcast Style
+   ══════════════════════════════════════════════════════════════════════════ */
 @keyframes gallop {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  25% { transform: translateY(-4px) rotate(-2deg); }
-  50% { transform: translateY(-1px) rotate(0deg); }
-  75% { transform: translateY(-5px) rotate(2deg); }
+  0%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-3px) rotate(-1deg); }
+  75% { transform: translateY(-4px) rotate(1deg); }
 }
 
 @keyframes winnerFlash {
   0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.5) drop-shadow(0 0 8px rgba(201,168,76,0.6)); }
+  50% { filter: brightness(1.6) drop-shadow(0 0 6px rgba(201,168,76,0.7)); }
 }
 
 @keyframes livePulse {
@@ -740,8 +741,367 @@ html, body {
   align-items: center;
   justify-content: center;
   height: 100%;
+  overflow: hidden;
 }
 
+/* ── TAB Betting Board ────────────────────────────────────────────────── */
+.tab-broadcast {
+  width: 95%;
+  max-width: 800px;
+}
+
+.tab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(90deg, var(--bg-card), var(--bg-surface));
+  padding: 6px 14px;
+  border-radius: 6px 6px 0 0;
+  border: 1px solid var(--border);
+  border-bottom: 2px solid var(--gold);
+}
+
+.tab-logo {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--gold);
+  letter-spacing: 2px;
+}
+
+.tab-race-info { display: flex; gap: 10px; align-items: center; }
+
+.tab-race-num {
+  background: var(--gold);
+  color: #000;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.tab-distance {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tab-countdown {
+  font-family: var(--font-body);
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+
+.tab-countdown.urgent { color: var(--red); animation: livePulse 0.8s infinite; }
+
+.tab-odds-board {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: none;
+  overflow-y: auto;
+  max-height: 55vh;
+}
+
+.tab-board-header {
+  display: flex;
+  padding: 4px 12px;
+  background: rgba(255,255,255,0.04);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.tab-col-num { width: 44px; }
+.tab-col-name { flex: 1; }
+.tab-col-odds { width: 70px; text-align: right; }
+
+.tab-row {
+  display: flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-top: 1px solid rgba(255,255,255,0.03);
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.tab-row:hover { background: rgba(255,255,255,0.02); }
+.tab-favourite { background: rgba(201,168,76,0.06); }
+.tab-backed { border-left: 3px solid var(--gold); }
+
+.tab-silk {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tab-col-name { font-weight: 600; padding-left: 8px; }
+
+.tab-col-odds {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  font-size: 14px;
+}
+
+.tab-col-odds.odds-short { color: var(--green); }
+.tab-col-odds.odds-drift { color: var(--red); }
+
+.tab-bets-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 12px;
+  background: rgba(201,168,76,0.06);
+  border: 1px solid var(--border);
+  border-top: none;
+  font-size: 11px;
+}
+
+.tab-bet-chip {
+  background: var(--bg-elevated);
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--gold-light);
+  font-weight: 600;
+}
+
+.tab-commentary {
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--gold-light);
+  min-height: 28px;
+}
+
+/* ── Sky Racing Live View ─────────────────────────────────────────────── */
+.sky-broadcast { width: 98%; max-width: 1100px; }
+
+.sky-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  border-bottom: 2px solid var(--gold);
+}
+
+.sky-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--red);
+  letter-spacing: 2px;
+}
+
+.sky-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--gold);
+  letter-spacing: 2px;
+}
+
+.sky-race-info { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+
+.sky-main { display: flex; border: 1px solid var(--border); border-top: none; }
+
+.sky-track-area { flex: 1; display: flex; flex-direction: column; }
+
+.sky-track {
+  flex: 1;
+  position: relative;
+  min-height: 300px;
+  overflow: hidden;
+}
+
+.sky-track-surface {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(90deg, transparent 0px, transparent 60px, rgba(0,0,0,0.04) 60px, rgba(0,0,0,0.04) 120px),
+    linear-gradient(180deg, #3d2b1a 0%, #5a4228 20%, #6b5030 40%, #7a5c35 55%, #6b5030 70%, #5a4228 85%, #3d2b1a 100%);
+}
+
+.sky-rail {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  z-index: 5;
+  background: rgba(255,255,255,0.25);
+}
+
+.sky-rail-top { top: 2%; }
+.sky-rail-bot { bottom: 2%; }
+
+.sky-finish-post {
+  position: absolute;
+  right: 5%;
+  top: 1%;
+  bottom: 1%;
+  width: 4px;
+  background: repeating-linear-gradient(to bottom, #fff 0px, #fff 5px, #111 5px, #111 10px);
+  z-index: 5;
+}
+
+.sky-horse {
+  position: absolute;
+  z-index: 10;
+  transition: left 0.1s linear;
+}
+
+.sky-horse.galloping { animation: gallop 0.22s infinite; }
+.sky-horse.winner-flash { animation: winnerFlash 0.4s infinite; z-index: 20; }
+
+.sky-horse svg { filter: drop-shadow(2px 2px 3px rgba(0,0,0,0.6)); }
+
+.sky-horse-num {
+  position: absolute;
+  bottom: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 900;
+  color: #fff;
+}
+
+.sky-commentary {
+  padding: 6px 12px;
+  background: rgba(0,0,0,0.7);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--gold-light);
+  min-height: 30px;
+}
+
+/* Sidebar runner positions */
+.sky-sidebar {
+  width: 220px;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.sky-sb-header {
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.04);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.sky-runner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-top: 1px solid rgba(255,255,255,0.03);
+  font-size: 11px;
+  transition: background 0.2s;
+}
+
+.sky-runner-lead { background: rgba(201,168,76,0.1); }
+.sky-runner-winner { background: rgba(46,204,113,0.1); }
+
+.sky-r-silk {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.sky-r-name {
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sky-r-odds {
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+/* Result bar */
+.sky-result-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--gold);
+  border-radius: 0 0 6px 6px;
+  font-size: 14px;
+  font-weight: 700;
+  flex-wrap: wrap;
+}
+
+.sky-result-pos {
+  background: var(--gold);
+  color: #000;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.sky-result-silk {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.sky-result-name { font-weight: 700; }
+.sky-result-odds { color: var(--gold); font-variant-numeric: tabular-nums; }
+.sky-result-sep { color: var(--text-muted); font-weight: 400; }
+
+/* ── Old race styles kept for backwards compat ──────────────────────── */
 /* Race card (betting phase) */
 .tv-race-header {
   display: flex;

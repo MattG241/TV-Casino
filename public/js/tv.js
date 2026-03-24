@@ -662,7 +662,7 @@ function renderTVPoker(state) {
 
 let lastRacePhase = null;
 let lastSpokenText = null;
-const HORSE_SILKS = ['🔴','🔵','🟡','⚫','🟢','🟣','🟠','🩵'];
+const SILK_COLORS = ['#c0392b','#2980b9','#d4a843','#1a1a2e','#27ae60','#8e44ad','#e67e22','#16a085','#e84393','#636e72','#fdcb6e','#00b894','#6c5ce7','#d63031','#0984e3','#a29bfe'];
 
 function renderTVHorseRacing(state) {
   const el = document.getElementById('tvHorseracingContent');
@@ -688,138 +688,146 @@ function renderTVHorseRacing(state) {
     CasinoAudio.speak(state.speak);
   }
 
-  // Betting phase
+  // ── TAB-style betting board ──
   if (state.phase === 'betting') {
+    const sorted = [...horses].sort((a, b) => a.odds - b.odds);
     el.innerHTML = `
-      <div class="tv-race-header">
-        <div class="tv-race-title">RACE DAY</div>
-        <div class="tv-timer" ${state.timer <= 5 ? 'style="color:var(--red)"' : ''}>${state.timer}s</div>
-      </div>
-      <div class="tv-status" style="margin-bottom:8px">Place your bets on the next race</div>
-      <div class="tv-race-card">
-        <div class="tv-race-card-header">
-          <span>HORSE</span><span>SILK</span><span>ODDS</span>
-        </div>
-        ${horses.map((h, i) => `
-          <div class="tv-race-card-row">
-            <span class="tv-rc-name" style="color:${h.color}">${h.name}</span>
-            <span class="tv-rc-silk">${HORSE_SILKS[i] || '⚪'}</span>
-            <span class="tv-rc-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds}:1</span>
+      <div class="tab-broadcast">
+        <div class="tab-header">
+          <div class="tab-logo">TV CASINO</div>
+          <div class="tab-race-info">
+            <span class="tab-race-num">RACE ${Math.floor(Math.random()*12)+1}</span>
+            <span class="tab-distance">${[1000,1200,1400,1600,1800,2000,2400][Math.floor(Math.random()*7)]}m</span>
           </div>
-        `).join('')}
-      </div>
-      ${Object.keys(state.bets || {}).length > 0 ? `
-        <div class="tv-bets-list" style="margin-top:8px">
-          ${Object.entries(state.bets).map(([pid, bet]) => {
-            const p = players.find(pl => pl.id === pid);
-            const horse = horses.find(h => h.id === bet.horseId);
-            return `<div class="tv-bet-card">
-              <div class="player-name">${p?.name || 'Player'}</div>
-              <div class="bet-info">$${bet.amount} on ${horse?.name || '?'}</div>
+          <div class="tab-countdown ${state.timer <= 5 ? 'urgent' : ''}">-${String(Math.floor(state.timer/60)).padStart(1,'0')}:${String(state.timer%60).padStart(2,'0')}</div>
+        </div>
+        <div class="tab-odds-board">
+          <div class="tab-board-header">
+            <span class="tab-col-num">#</span>
+            <span class="tab-col-name">RUNNER</span>
+            <span class="tab-col-odds">ODDS</span>
+          </div>
+          ${sorted.map((h, i) => {
+            const origIdx = horses.indexOf(h);
+            const betOnThis = Object.values(state.bets||{}).filter(b=>b.horseId===h.id).length;
+            return `
+            <div class="tab-row ${i === 0 ? 'tab-favourite' : ''} ${betOnThis > 0 ? 'tab-backed' : ''}">
+              <span class="tab-col-num">
+                <span class="tab-silk" style="background:${h.color}">${origIdx+1}</span>
+              </span>
+              <span class="tab-col-name">${h.name}</span>
+              <span class="tab-col-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">
+                $${h.odds.toFixed(2)}
+              </span>
             </div>`;
           }).join('')}
         </div>
-      ` : ''}
+        ${Object.keys(state.bets||{}).length > 0 ? `
+          <div class="tab-bets-bar">
+            ${Object.entries(state.bets).map(([pid, bet]) => {
+              const p = players.find(pl => pl.id === pid);
+              const horse = horses.find(h => h.id === bet.horseId);
+              return `<span class="tab-bet-chip">${p?.name||'?'}: $${bet.amount} on #${horses.indexOf(horse)+1}</span>`;
+            }).join('')}
+          </div>
+        ` : ''}
+        <div class="tab-commentary">${state.commentary || ''}</div>
+      </div>
     `;
     return;
   }
 
-  // Loading / Starting / Racing / Result
+  // ── Sky Racing-style live view ──
   const commentary = state.commentary || '';
-  const leaderId = state.leader;
-  const leaderHorse = horses.find(h => h.id === leaderId);
   const isLoading = state.phase === 'loading';
   const showTrack = isRacing || isStarting || isLoading || state.phase === 'result';
+  if (!showTrack) return;
 
-  if (!showTrack) return; // betting is handled above
-
-  // Calculate lane positions for 8 horses
+  // Sort horses by position for the running order sidebar
+  const runOrder = [...horses].sort((a, b) => (b.position||0) - (a.position||0));
   const laneCount = horses.length;
-  const laneHeight = Math.min(10, 80 / laneCount);
 
   el.innerHTML = `
-    <div class="tv-race-broadcast">
-      <div class="tv-race-topbar">
-        <div class="tv-race-live">
+    <div class="sky-broadcast">
+      <div class="sky-topbar">
+        <div class="sky-status">
           ${isRacing ? '<span class="live-dot"></span> LIVE' :
-            isLoading ? 'LOADING' :
-            isStarting ? 'GATES OPENING' : 'FINAL'}
+            isLoading ? 'LOADING' : isStarting ? 'STARTING' : 'FINAL'}
         </div>
-        ${leaderHorse && isRacing ? `<div class="tv-race-leader">LEAD: <strong style="color:${leaderHorse.color}">${leaderHorse.name}</strong></div>` : ''}
-        ${state.phase === 'result' && state.places ? `
-          <div class="tv-race-places">
-            1st: <strong style="color:${horses.find(h=>h.id===state.places[0])?.color}">${horses.find(h=>h.id===state.places[0])?.name}</strong>
-            &nbsp; 2nd: ${horses.find(h=>h.id===state.places[1])?.name}
-            &nbsp; 3rd: ${horses.find(h=>h.id===state.places[2])?.name}
-          </div>
-        ` : ''}
+        <div class="sky-title">TV CASINO RACING</div>
+        <div class="sky-race-info">${horses.length} RUNNERS</div>
       </div>
 
-      <div class="tv-race-3d-track">
-        <div class="tv-track-surface">
-          <div class="tv-track-rail tv-track-rail-top"></div>
-          <div class="tv-track-rail tv-track-rail-bottom"></div>
-          <div class="tv-track-finish-post" ${state.phase === 'result' ? 'style="box-shadow:0 0 20px rgba(201,168,76,0.5)"' : ''}></div>
-
-          ${isLoading || isStarting ? `
-            <div class="tv-starting-gate" ${isStarting ? 'style="opacity:0.3"' : ''}>
-              ${horses.map((h, i) => `
-                <div class="tv-gate-stall" style="top:${5 + i * (90/laneCount)}%; ${h.gateLoaded ? 'background:rgba(255,255,255,0.08)' : ''}">
-                  <span class="tv-gate-num">${i+1}</span>
-                </div>
-              `).join('')}
+      <div class="sky-main">
+        <div class="sky-track-area">
+          <div class="sky-track">
+            <div class="sky-track-surface">
+              ${horses.map((h, i) => {
+                const pos = (isLoading || isStarting) ? 2 : Math.min(h.position||0, 95);
+                const laneY = 3 + (i * (94 / laneCount));
+                const loaded = h.gateLoaded || isRacing || state.phase === 'result';
+                const isWinner = state.winner === h.id;
+                return `
+                  <div class="sky-horse ${isRacing ? 'galloping' : ''} ${isWinner && state.phase==='result' ? 'winner-flash' : ''}"
+                    style="left:${pos}%; top:${laneY}%; ${!loaded && isLoading ? 'opacity:0.25' : ''}">
+                    <svg viewBox="0 0 40 28" width="36" height="25">
+                      <path d="M6 22 L9 14 L12 16 L14 10 L17 8 L22 6 L28 6 L32 7 L35 6 L37 8 L35 10 L32 9 L30 11 L28 15 L30 17 L32 22 L29 22 L27 18 L24 16 L20 18 L16 22 L14 22 L16 16 L12 20 L10 22 Z"
+                        fill="${h.color}" stroke="rgba(0,0,0,0.5)" stroke-width="0.4"/>
+                      <circle cx="35" cy="8" r="1.2" fill="#fff"/>
+                    </svg>
+                    <span class="sky-horse-num" style="background:${h.color}">${i+1}</span>
+                  </div>`;
+              }).join('')}
+              <div class="sky-finish-post"></div>
+              <div class="sky-rail sky-rail-top"></div>
+              <div class="sky-rail sky-rail-bot"></div>
             </div>
-          ` : ''}
+          </div>
+          <div class="sky-commentary">${commentary}</div>
+        </div>
 
-          ${horses.map((h, i) => {
-            const pos = isLoading || isStarting ? 2 : Math.min(h.position || 0, 95);
-            const laneY = 5 + (i * (90 / laneCount));
+        <div class="sky-sidebar">
+          <div class="sky-sb-header">POS</div>
+          ${runOrder.slice(0, Math.min(8, laneCount)).map((h, pos) => {
+            const origIdx = horses.indexOf(h);
             const isWinner = state.winner === h.id;
-            const scale = 0.7 + (pos / 100) * 0.35;
-            const loaded = h.gateLoaded || isRacing || state.phase === 'result';
             return `
-              <div class="tv-horse-3d ${isRacing ? 'galloping' : ''} ${isWinner && state.phase === 'result' ? 'winner-flash' : ''} ${!loaded && isLoading ? 'approaching' : ''}"
-                style="left:calc(${pos}% - 8px); top:${laneY}%; transform:scale(${scale}); ${!loaded && isLoading ? 'opacity:0.3' : ''}">
-                <div class="tv-horse-body">
-                  <svg class="tv-horse-svg" viewBox="0 0 50 35" width="45" height="32">
-                    <path d="M8 28 L12 18 L15 20 L18 12 L22 10 L28 8 L35 7 L40 9 L44 8 L46 10 L44 12 L40 11 L38 13 L36 18 L38 20 L40 28 L37 28 L35 22 L30 20 L25 22 L20 28 L17 28 L20 20 L15 24 L12 28 Z"
-                      fill="${h.color}" stroke="rgba(0,0,0,0.4)" stroke-width="0.5"/>
-                    <circle cx="44" cy="10" r="1.5" fill="#fff"/>
-                    <rect x="20" y="5" width="8" height="5" rx="2" fill="${h.color}" opacity="0.7"/>
-                  </svg>
-                  <div class="tv-jockey-silk">${HORSE_SILKS[i] || '⚪'}</div>
-                </div>
-                <div class="tv-horse-number">${i + 1}</div>
-              </div>
-            `;
+            <div class="sky-runner ${isWinner ? 'sky-runner-winner' : ''} ${pos === 0 && isRacing ? 'sky-runner-lead' : ''}">
+              <span class="sky-r-silk" style="background:${h.color}">${origIdx+1}</span>
+              <span class="sky-r-name">${h.name.length > 14 ? h.name.substring(0,12)+'..' : h.name}</span>
+              <span class="sky-r-odds">$${(h.lockedOdds||h.odds).toFixed(2)}</span>
+            </div>`;
           }).join('')}
+          ${laneCount > 8 ? `<div class="sky-runner" style="opacity:0.5;justify-content:center">+${laneCount-8} more</div>` : ''}
         </div>
       </div>
-
-      <div class="tv-race-commentary">${commentary}</div>
 
       ${state.phase === 'result' && state.winner ? `
-        <div class="tv-race-result-panel">
-          <div class="tv-race-winner-banner" style="border-color:${horses.find(h=>h.id===state.winner)?.color}">
-            <span class="tv-race-trophy">🏆</span>
-            <span style="color:${horses.find(h=>h.id===state.winner)?.color}">${horses.find(h=>h.id===state.winner)?.name}</span>
-            <span style="color:var(--text-secondary);font-size:14px;font-weight:400;margin-left:8px">
-              ${(horses.find(h=>h.id===state.winner)?.lockedOdds || horses.find(h=>h.id===state.winner)?.odds)}:1
-            </span>
-          </div>
-          <div class="tv-bets-list" style="margin-top:8px">
-            ${Object.entries(state.bets || {}).map(([pid, bet]) => {
-              const p = players.find(pl => pl.id === pid);
-              return `
-                <div class="tv-bet-card" style="border-color:${bet.won ? 'var(--green)' : 'var(--red)'}">
-                  <div class="player-name">${p?.name || 'Player'}</div>
-                  <div class="bet-info" style="color:${bet.won ? 'var(--green)' : 'var(--red)'}">
-                    ${bet.won ? `WON $${bet.winAmount}!` : `Lost $${bet.amount}`}
-                  </div>
+        <div class="sky-result-bar">
+          <span class="sky-result-pos">1ST</span>
+          <span class="sky-result-silk" style="background:${horses.find(h=>h.id===state.winner)?.color}">${horses.indexOf(horses.find(h=>h.id===state.winner))+1}</span>
+          <span class="sky-result-name">${horses.find(h=>h.id===state.winner)?.name}</span>
+          <span class="sky-result-odds">$${(horses.find(h=>h.id===state.winner)?.lockedOdds||horses.find(h=>h.id===state.winner)?.odds).toFixed(2)}</span>
+          ${state.places && state.places[1] ? `
+            <span class="sky-result-sep">|</span>
+            <span class="sky-result-pos" style="background:#888">2ND</span>
+            <span class="sky-result-name" style="font-size:12px">${horses.find(h=>h.id===state.places[1])?.name}</span>
+            <span class="sky-result-sep">|</span>
+            <span class="sky-result-pos" style="background:#a0522d">3RD</span>
+            <span class="sky-result-name" style="font-size:12px">${horses.find(h=>h.id===state.places[2])?.name}</span>
+          ` : ''}
+        </div>
+        <div class="tv-bets-list" style="margin-top:4px;justify-content:center">
+          ${Object.entries(state.bets || {}).map(([pid, bet]) => {
+            const p = players.find(pl => pl.id === pid);
+            return `
+              <div class="tv-bet-card" style="border-color:${bet.won ? 'var(--green)' : 'var(--red)'}">
+                <div class="player-name">${p?.name || 'Player'}</div>
+                <div class="bet-info" style="color:${bet.won ? 'var(--green)' : 'var(--red)'}">
+                  ${bet.won ? `WON $${bet.winAmount}!` : `Lost $${bet.amount}`}
                 </div>
-              `;
-            }).join('')}
-          </div>
+              </div>`;
+          }).join('')}
         </div>
       ` : ''}
     </div>
