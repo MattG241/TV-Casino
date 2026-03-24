@@ -80,6 +80,29 @@ body {
 .screen { display: none; }
 .screen.active { display: block; animation: fadeIn 0.4s ease; }
 
+/* ── Join Form ─────────────────────────────────────────────────────────── */
+.join-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.room-code-input {
+  text-transform: uppercase;
+  text-align: center;
+  letter-spacing: 6px;
+  font-size: 20px !important;
+  font-weight: 700;
+}
+
+.btn-join {
+  font-size: 20px;
+  padding: 18px;
+  margin-top: 8px;
+  animation: glow 2s ease infinite;
+}
+
 /* ── Lobby ─────────────────────────────────────────────────────────────── */
 .lobby-actions {
   display: flex;

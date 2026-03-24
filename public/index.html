@@ -20,14 +20,14 @@
     <!-- JOIN SCREEN -->
     <div class="screen active" id="joinScreen">
       <div class="avatar-picker" id="avatarPicker"></div>
-      <div class="lobby-actions">
+      <div class="join-form">
         <div class="input-group">
           <input type="text" id="playerName" placeholder="Your Name" maxlength="12" autocomplete="off">
         </div>
-        <div class="join-section">
-          <input type="text" id="roomCode" placeholder="CODE" maxlength="4" autocomplete="off">
-          <button class="btn btn-gold" onclick="joinRoom()">Join</button>
+        <div class="input-group">
+          <input type="text" id="roomCode" placeholder="Room Code" maxlength="4" autocomplete="off" class="room-code-input">
         </div>
+        <button class="btn btn-gold btn-block btn-join" onclick="joinRoom()">JOIN GAME</button>
       </div>
     </div>
 

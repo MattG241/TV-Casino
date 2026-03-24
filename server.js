@@ -149,12 +149,22 @@ const games = {
     placeBet(room, playerId, bet) {
       if (room.gameState.phase !== 'betting') return;
       const player = room.players.find(p => p.id === playerId);
-      if (!player || bet.amount > player.chips || bet.amount <= 0) return;
+      if (!player) return;
+      // Validate bet amount
+      const amount = parseInt(bet.amount);
+      if (!amount || amount <= 0 || amount > player.chips) return;
+      bet.amount = amount;
+      // Cap at 10 bets per player per round
       if (!room.gameState.bets[playerId]) room.gameState.bets[playerId] = [];
+      if (room.gameState.bets[playerId].length >= 10) return;
       room.gameState.bets[playerId].push(bet);
-      player.chips -= bet.amount;
-      broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
-      broadcastToRoom(room, 'players:update', playerList(room));
+      player.chips -= amount;
+      // Throttle broadcasts - max once per 200ms
+      clearTimeout(room._betBroadcastTimeout);
+      room._betBroadcastTimeout = setTimeout(() => {
+        broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
+        broadcastToRoom(room, 'players:update', playerList(room));
+      }, 200);
     },
     spin(room) {
       if (room.gameState.phase === 'spinning') return; // prevent double-spin
@@ -222,8 +232,16 @@ const games = {
     },
     spin(room, playerId, betAmount) {
       const player = room.players.find(p => p.id === playerId);
-      if (!player || betAmount > player.chips || betAmount <= 0) return;
-      player.chips -= betAmount;
+      if (!player) return;
+      const amount = parseInt(betAmount);
+      if (!amount || amount <= 0 || amount > player.chips) return;
+      // Throttle: 1 spin per second per player
+      const now = Date.now();
+      if (!room._lastSpin) room._lastSpin = {};
+      if (room._lastSpin[playerId] && now - room._lastSpin[playerId] < 1000) return;
+      room._lastSpin[playerId] = now;
+      player.chips -= amount;
+      betAmount = amount;
 
       const SYMBOLS = ['cherry', 'lemon', 'orange', 'plum', 'bell', 'bar', 'seven', 'diamond'];
       const WEIGHTS = [25, 20, 18, 15, 10, 7, 3, 2]; // weighted probabilities

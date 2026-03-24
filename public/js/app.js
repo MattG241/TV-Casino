@@ -321,7 +321,12 @@ function renderRouletteHistory(history) {
   ).join('')}</div>`;
 }
 
+let _lastBetTime = 0;
 function placeRouletteBet(type, value) {
+  // Throttle: min 300ms between bets
+  const now = Date.now();
+  if (now - _lastBetTime < 300) return;
+  _lastBetTime = now;
   socket.emit('roulette:bet', { type, value, amount: rouletteBetAmount });
   rouletteSelectedBet = type === 'color' ? value : type;
   showToast(`Bet $${rouletteBetAmount} on ${value !== undefined ? value : type}`);
