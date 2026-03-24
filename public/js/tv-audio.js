@@ -257,58 +257,60 @@ const CasinoAudio = (() => {
       setTimeout(() => playNoise(2, 0.1), 600);
     },
 
-    // Spoken race commentary via Web Speech API
+    // Spoken race commentary — Web Speech API with audio fallback for Fire TV
     speak(text) {
       if (!enabled || !text) return;
-      if (!('speechSynthesis' in window)) {
-        console.warn('TTS: speechSynthesis not available');
-        return;
+
+      // Try Web Speech API first
+      if ('speechSynthesis' in window && ttsReady) {
+        speechSynthesis.cancel();
+        setTimeout(() => {
+          try {
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.rate = 1.15;
+            utter.pitch = 0.85;
+            utter.volume = 0.9;
+            const voices = ttsVoices.length > 0 ? ttsVoices : speechSynthesis.getVoices();
+            const preferred = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('male'))
+              || voices.find(v => v.lang === 'en-AU')
+              || voices.find(v => v.lang === 'en-GB')
+              || voices.find(v => v.lang.startsWith('en-'))
+              || voices.find(v => v.lang.startsWith('en'));
+            if (preferred) utter.voice = preferred;
+            utter.onerror = () => this._speakViaAudio(text); // fallback on error
+            speechSynthesis.speak(utter);
+            let keepAlive = setInterval(() => {
+              if (!speechSynthesis.speaking) { clearInterval(keepAlive); return; }
+              speechSynthesis.pause();
+              speechSynthesis.resume();
+            }, 10000);
+            utter.onend = () => clearInterval(keepAlive);
+          } catch (e) {
+            this._speakViaAudio(text);
+          }
+        }, 100);
+      } else {
+        // No speechSynthesis (Fire TV, etc) — use server TTS proxy
+        this._speakViaAudio(text);
       }
+    },
 
-      // Cancel any ongoing speech first
-      speechSynthesis.cancel();
-
-      // Chrome bug: after cancel(), need a small delay before speaking
-      setTimeout(() => {
-        try {
-          const utter = new SpeechSynthesisUtterance(text);
-          utter.rate = 1.15;
-          utter.pitch = 0.85;
-          utter.volume = 0.9;
-
-          // Use preloaded voices, fall back to fresh getVoices()
-          const voices = ttsVoices.length > 0 ? ttsVoices : speechSynthesis.getVoices();
-          const preferred = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('male'))
-            || voices.find(v => v.lang === 'en-AU')
-            || voices.find(v => v.lang === 'en-GB')
-            || voices.find(v => v.lang.startsWith('en-'))
-            || voices.find(v => v.lang.startsWith('en'));
-          if (preferred) utter.voice = preferred;
-
-          utter.onerror = (e) => console.warn('TTS error:', e.error);
-
-          speechSynthesis.speak(utter);
-
-          // Chrome workaround: speechSynthesis can pause itself after 15s
-          // Keep it alive by prodding it
-          let keepAlive = setInterval(() => {
-            if (!speechSynthesis.speaking) {
-              clearInterval(keepAlive);
-              return;
-            }
-            speechSynthesis.pause();
-            speechSynthesis.resume();
-          }, 10000);
-
-          utter.onend = () => clearInterval(keepAlive);
-        } catch (e) {
-          console.warn('TTS speak failed:', e);
-        }
-      }, 100);
+    // Audio element fallback — streams TTS from server proxy
+    _speakViaAudio(text) {
+      if (!enabled || !text) return;
+      if (this._ttsAudio) {
+        this._ttsAudio.pause();
+        this._ttsAudio = null;
+      }
+      const audio = new Audio(`/api/tts?text=${encodeURIComponent(text.substring(0, 200))}`);
+      audio.volume = 0.9;
+      audio.play().catch(() => {});
+      this._ttsAudio = audio;
     },
 
     stopSpeech() {
       if ('speechSynthesis' in window) speechSynthesis.cancel();
+      if (this._ttsAudio) { this._ttsAudio.pause(); this._ttsAudio = null; }
     },
 
     // Poker fold

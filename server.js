@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 
@@ -10,6 +11,19 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use(express.static('public'));
 
 app.get('/tv', (req, res) => res.sendFile(__dirname + '/public/tv.html'));
+
+// ── TTS Proxy — for browsers without speechSynthesis (Amazon Fire TV etc) ───
+app.get('/api/tts', (req, res) => {
+  const text = (req.query.text || '').substring(0, 200);
+  if (!text) return res.status(400).send('No text');
+  const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=en-AU&client=tw-ob&ttsspeed=1`;
+  const headers = { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://translate.google.com/' };
+  https.get(url, { headers }, (upstream) => {
+    if (upstream.statusCode !== 200) return res.status(502).send('TTS upstream error');
+    res.set({ 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=3600' });
+    upstream.pipe(res);
+  }).on('error', () => res.status(502).send('TTS fetch failed'));
+});
 
 // ── Game State ──────────────────────────────────────────────────────────────
 
@@ -1164,6 +1178,27 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Rejoin — reconnect a returning player to their existing session
+  socket.on('room:rejoin', ({ code, existingPlayerId }) => {
+    const room = getRoom(code);
+    if (!room) return socket.emit('room:error', { message: 'Room not found' });
+    const existing = room.players.find(p => p.id === existingPlayerId);
+    if (!existing) return socket.emit('room:error', { message: 'Session expired' });
+    // Reattach socket
+    existing.socket = socket;
+    if (existing._disconnectTimer) { clearTimeout(existing._disconnectTimer); delete existing._disconnectTimer; }
+    playerId = existingPlayerId;
+    currentRoom = room;
+    socket.emit('room:joined', {
+      code: room.code, playerId, players: playerList(room), currentGame: room.currentGame,
+    });
+    broadcastToRoom(room, 'players:update', playerList(room));
+    if (room.currentGame && room.gameState) {
+      socket.emit('game:started', { game: room.currentGame });
+      socket.emit('game:state', { game: room.currentGame, state: room.gameState });
+    }
+  });
+
   // TV creates and hosts the room
   socket.on('tv:create', () => {
     const room = createRoom('TV');
@@ -1330,23 +1365,33 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     if (!currentRoom) return;
-    currentRoom.players = currentRoom.players.filter(p => p.id !== playerId);
-    if (currentRoom.tvSocket === socket) currentRoom.tvSocket = null;
-    // Clean up from ready/vote sets
-    if (currentRoom.readyPlayers) currentRoom.readyPlayers.delete(playerId);
-    if (currentRoom.votes) delete currentRoom.votes[playerId];
-    if (currentRoom.players.length === 0 && !currentRoom.tvSocket) {
-      if (currentRoom._timerInterval) clearInterval(currentRoom._timerInterval);
-      if (currentRoom._voteTimerInterval) clearInterval(currentRoom._voteTimerInterval);
-      if (currentRoom._raceInterval) clearInterval(currentRoom._raceInterval);
-      if (currentRoom._oddsInterval) clearInterval(currentRoom._oddsInterval);
-      clearTimeout(currentRoom._betBroadcastTimeout);
-      rooms.delete(currentRoom.code);
-    } else {
-      if (currentRoom.hostId === playerId && currentRoom.players.length > 0) {
-        currentRoom.hostId = currentRoom.players[0].id;
-      }
-      broadcastToRoom(currentRoom, 'players:update', playerList(currentRoom));
+
+    // TV socket — remove immediately
+    if (currentRoom.tvSocket === socket) {
+      currentRoom.tvSocket = null;
+    }
+
+    // Player — keep slot for 2 minutes to allow rejoin (phone sleep/tab switch)
+    const player = currentRoom.players.find(p => p.id === playerId);
+    if (player) {
+      player._disconnectTimer = setTimeout(() => {
+        currentRoom.players = currentRoom.players.filter(p => p.id !== playerId);
+        if (currentRoom.readyPlayers) currentRoom.readyPlayers.delete(playerId);
+        if (currentRoom.votes) delete currentRoom.votes[playerId];
+        if (currentRoom.players.length === 0 && !currentRoom.tvSocket) {
+          if (currentRoom._timerInterval) clearInterval(currentRoom._timerInterval);
+          if (currentRoom._voteTimerInterval) clearInterval(currentRoom._voteTimerInterval);
+          if (currentRoom._raceInterval) clearInterval(currentRoom._raceInterval);
+          if (currentRoom._oddsInterval) clearInterval(currentRoom._oddsInterval);
+          clearTimeout(currentRoom._betBroadcastTimeout);
+          rooms.delete(currentRoom.code);
+        } else {
+          if (currentRoom.hostId === playerId && currentRoom.players.length > 0) {
+            currentRoom.hostId = currentRoom.players[0].id;
+          }
+          broadcastToRoom(currentRoom, 'players:update', playerList(currentRoom));
+        }
+      }, 120000); // 2 minute grace period
     }
   });
 });

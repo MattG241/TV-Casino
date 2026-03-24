@@ -13,6 +13,10 @@ const Race3D = (() => {
   let horseAnimClip = null;
   let modelReady = false;
 
+  // Cache latest state so the render loop can drive parade animation
+  let lastHorsesData = [];
+  let lastPhase = null;
+
   // Track dimensions
   const STRAIGHT = 70;
   const RADIUS = 28;
@@ -399,13 +403,33 @@ const Race3D = (() => {
     const dx = pNext.x - p.x;
     const dz = pNext.z - p.z;
     if (dx !== 0 || dz !== 0) {
-      h3d.rotation.y = Math.atan2(dx, dz);
+      // Horse models face +X, so subtract PI/2 from the track heading
+      let targetY = Math.atan2(dx, dz) - Math.PI / 2;
+
+      // Smooth rotation to prevent flipping at turns
+      if (h3d._prevRotY === undefined) {
+        h3d._prevRotY = targetY;
+      }
+      // Shortest-path angle interpolation
+      let diff = targetY - h3d._prevRotY;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      h3d._prevRotY += diff * 0.15;
+      h3d.rotation.y = h3d._prevRotY;
     }
   }
 
   // ── Main update ────────────────────────────────────────────────────────
   function updateHorses(horsesData, phase) {
     if (!scene) return;
+    // Cache for frame-driven animation
+    lastHorsesData = horsesData;
+    lastPhase = phase;
+    _syncAndAnimate(horsesData, phase);
+  }
+
+  // Called from both updateHorses (on state) and render loop (every frame)
+  function _syncAndAnimate(horsesData, phase) {
     frameCount++;
     const delta = clock ? clock.getDelta() : 0.016;
 
@@ -431,9 +455,9 @@ const Race3D = (() => {
       // Update animation mixer
       if (h3d._mixer) h3d._mixer.update(delta);
 
-      // ── BETTING: horse parade ──
+      // ── BETTING: horse parade (frame-driven smooth walk) ──
       if (phase === 'betting') {
-        h3d._paradeT += 0.00012;
+        h3d._paradeT += 0.0003; // smooth per-frame parade speed
         placeOnTrack(h3d, h3d._paradeT);
         setAnimSpeed(h3d, 1.5); // slow walk
         return;
@@ -514,6 +538,10 @@ const Race3D = (() => {
 
   function render() {
     if (!renderer || !scene || !camera) return;
+    // Drive parade/race animation every frame for smooth motion
+    if (lastHorsesData.length > 0 && lastPhase) {
+      _syncAndAnimate(lastHorsesData, lastPhase);
+    }
     renderer.render(scene, camera);
     animFrameId = requestAnimationFrame(render);
   }
@@ -530,6 +558,8 @@ const Race3D = (() => {
     trackPoints = []; trackTangents = [];
     initialized = false;
     frameCount = 0;
+    lastHorsesData = [];
+    lastPhase = null;
   }
 
   function resize() {

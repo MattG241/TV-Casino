@@ -62,6 +62,59 @@ function showToast(msg) {
   setTimeout(() => el.remove(), 3000);
 }
 
+// ── Session Persistence ─────────────────────────────────────────────────
+
+function saveSession() {
+  try {
+    localStorage.setItem('tvCasinoSession', JSON.stringify({
+      roomCode, playerId: myId, playerName: myName, avatar: selectedAvatar, ts: Date.now()
+    }));
+  } catch (e) {}
+}
+
+function clearSession() {
+  try { localStorage.removeItem('tvCasinoSession'); } catch (e) {}
+}
+
+function tryRejoin() {
+  try {
+    const raw = localStorage.getItem('tvCasinoSession');
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    // Expire after 2 hours
+    if (Date.now() - s.ts > 2 * 60 * 60 * 1000) { clearSession(); return false; }
+    if (!s.roomCode || !s.playerId) return false;
+    socket.emit('room:rejoin', { code: s.roomCode, existingPlayerId: s.playerId });
+    myName = s.playerName || 'Player';
+    selectedAvatar = s.avatar || 0;
+    return true;
+  } catch (e) { return false; }
+}
+
+// Auto-rejoin on socket reconnect (phone sleep / tab switch)
+socket.on('connect', () => {
+  if (myId && roomCode) {
+    // We were already connected — rejoin same session
+    socket.emit('room:rejoin', { code: roomCode, existingPlayerId: myId });
+  }
+});
+
+// Also rejoin when returning to the app (visibility change)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && myId && roomCode) {
+    if (!socket.connected) {
+      socket.connect();
+    } else {
+      socket.emit('room:rejoin', { code: roomCode, existingPlayerId: myId });
+    }
+  }
+});
+
+// Try rejoin on initial page load
+if (!tryRejoin()) {
+  // No stored session — show join screen as normal
+}
+
 // ── Room Management ─────────────────────────────────────────────────────
 
 function joinRoom() {
@@ -75,6 +128,7 @@ socket.on('room:joined', (data) => {
   myId = data.playerId;
   roomCode = data.code;
   players = data.players;
+  saveSession();
   enterLobby();
   if (data.currentGame) {
     currentGame = data.currentGame;
@@ -82,7 +136,10 @@ socket.on('room:joined', (data) => {
   }
 });
 
-socket.on('room:error', (data) => showToast(data.message));
+socket.on('room:error', (data) => {
+  clearSession();
+  showToast(data.message);
+});
 
 function enterLobby() {
   showScreen('lobbyScreen');
