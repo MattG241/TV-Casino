@@ -702,6 +702,8 @@ function renderTVHorseRacing(state) {
       Race3D.stopRendering();
       Race3D.dispose();
     }
+    // Force rebuild of betting HTML on new race
+    el.innerHTML = '';
   }
 
   // ── Sky Racing split-screen betting board ──
@@ -712,87 +714,103 @@ function renderTVHorseRacing(state) {
     const conditions = ['GOOD 4','SOFT 5','GOOD 3','FIRM 1','SOFT 6','HEAVY 8'];
     const condition = conditions[Math.floor((state.raceNumber || 0) * 3.7) % conditions.length];
 
-    el.innerHTML = `
-      <div class="sky-full">
-        <!-- TOP BAR — green header like Sky Racing -->
-        <div class="sky-header-bar">
-          <div class="sky-hdr-left">
-            <span class="sky-hdr-tab">TAB</span>
-            <span class="sky-hdr-racenum">${state.raceNumber || 1}</span>
-            <div class="sky-hdr-venue">
-              <div class="sky-hdr-venue-name">${trackName} &nbsp;${state.distance || 1600}m</div>
-              <div class="sky-hdr-venue-sub">RACE ${state.raceNumber || 1} &bull; ${condition}</div>
-            </div>
-          </div>
-          <div class="sky-hdr-right">
-            <div class="sky-hdr-timer ${state.timer <= 5 ? 'urgent' : ''}">${state.timer > 0 ? '-0:' + String(state.timer).padStart(2,'0') : 'OFF'}</div>
-            <div class="sky-hdr-brand">SKY<span>1</span></div>
-          </div>
-        </div>
-
-        <!-- MAIN SPLIT — odds left, 3d preview right -->
-        <div class="sky-split">
-          <div class="sky-odds-panel">
-            <div class="sky-odds-header">
-              <span class="sky-oh-num">#</span>
-              <span class="sky-oh-name">TAB</span>
-              <span class="sky-oh-odds">WIN</span>
-              <span class="sky-oh-barrier">BARRIER</span>
-            </div>
-            <div class="sky-odds-scroll" style="--scroll-dist: ${sorted.length > 10 ? -(sorted.length - 10) * 30 + 'px' : '0px'}">
-            ${sorted.map((h, i) => {
-              const origIdx = horses.indexOf(h);
-              const barrier = origIdx + 1;
-              const betOnThis = Object.values(state.bets||{}).filter(b=>b.horseId===h.id).length;
-              if (h.scratched) return `
-              <div class="sky-odds-row sky-scr">
-                <span class="sky-or-num">${origIdx+1}</span>
-                <span class="sky-or-odds" style="color:#888">SCR</span>
-                <span class="sky-or-name"><s>${h.name}</s></span>
-                <span class="sky-or-barrier">(${barrier})</span>
-              </div>`;
-              return `
-              <div class="sky-odds-row ${i === 0 ? 'sky-fav' : ''} ${betOnThis > 0 ? 'sky-backed' : ''}">
-                <span class="sky-or-num">${origIdx+1}</span>
-                <span class="sky-or-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds.toFixed(2)}</span>
-                <span class="sky-or-name" style="color:${h.color}">${h.name}</span>
-                <span class="sky-or-barrier">(${barrier})</span>
-              </div>`;
-            }).join('')}
-            </div>
-            ${Object.keys(state.bets||{}).length > 0 ? `
-              <div class="sky-bets-strip">
-                ${Object.entries(state.bets).map(([pid, bet]) => {
-                  const p = players.find(pl => pl.id === pid);
-                  const horse = horses.find(h => h.id === bet.horseId);
-                  return `<span class="sky-bet-tag">${p?.name||'?'} → #${horses.indexOf(horse)+1} $${bet.amount}</span>`;
-                }).join('')}
+    // Build the shell ONCE — preserve the 3D canvas across updates
+    if (!el.querySelector('#racePreview3d')) {
+      el.innerHTML = `
+        <div class="sky-full">
+          <div class="sky-header-bar">
+            <div class="sky-hdr-left">
+              <span class="sky-hdr-tab">TAB</span>
+              <span class="sky-hdr-racenum">${state.raceNumber || 1}</span>
+              <div class="sky-hdr-venue">
+                <div class="sky-hdr-venue-name">${trackName} &nbsp;${state.distance || 1600}m</div>
+                <div class="sky-hdr-venue-sub">RACE ${state.raceNumber || 1} &bull; ${condition}</div>
               </div>
-            ` : ''}
+            </div>
+            <div class="sky-hdr-right">
+              <div class="sky-hdr-timer" id="skyBetTimer">${state.timer > 0 ? '-0:' + String(state.timer).padStart(2,'0') : 'OFF'}</div>
+              <div class="sky-hdr-brand">SKY<span>1</span></div>
+            </div>
           </div>
-          <div class="sky-preview-panel">
-            <div class="sky-preview-3d" id="racePreview3d"></div>
-            <div class="sky-preview-info">${state.commentary || ''}</div>
+          <div class="sky-split">
+            <div class="sky-odds-panel">
+              <div class="sky-odds-header">
+                <span class="sky-oh-num">#</span>
+                <span class="sky-oh-name">TAB</span>
+                <span class="sky-oh-odds">WIN</span>
+                <span class="sky-oh-barrier">BARRIER</span>
+              </div>
+              <div class="sky-odds-scroll" id="skyOddsScroll" style="--scroll-dist: ${sorted.length > 10 ? -(sorted.length - 10) * 30 + 'px' : '0px'}"></div>
+              <div id="skyBetsStrip"></div>
+            </div>
+            <div class="sky-preview-panel">
+              <div class="sky-preview-3d" id="racePreview3d"></div>
+              <div class="sky-preview-info" id="skyPreviewInfo"></div>
+            </div>
+          </div>
+          <div class="sky-ticker">
+            ${[1,2,3,4].map(n => {
+              const rn = (state.raceNumber||1) + n;
+              const tn = trackNames[(rn) % trackNames.length];
+              return `<span class="sky-tick-item"><strong>${rn}</strong> ${tn} <span class="sky-tick-time">${n*3} MIN</span></span>`;
+            }).join('')}
           </div>
         </div>
-
-        <!-- BOTTOM TICKER -->
-        <div class="sky-ticker">
-          ${[1,2,3,4].map(n => {
-            const rn = (state.raceNumber||1) + n;
-            const tn = trackNames[(rn) % trackNames.length];
-            return `<span class="sky-tick-item"><strong>${rn}</strong> ${tn} <span class="sky-tick-time">${n*3} MIN</span></span>`;
-          }).join('')}
-        </div>
-      </div>
-    `;
-
-    // Init 3D preview in betting panel
-    const preview = document.getElementById('racePreview3d');
-    if (preview && typeof Race3D !== 'undefined' && !Race3D.isInitialized()) {
-      Race3D.init(preview);
-      Race3D.startRendering();
+      `;
+      // Init 3D preview
+      const preview = document.getElementById('racePreview3d');
+      if (preview && typeof Race3D !== 'undefined') {
+        Race3D.init(preview);
+        Race3D.startRendering();
+      }
     }
+
+    // ── Update dynamic parts only (no innerHTML on parent) ──
+    const timerEl = document.getElementById('skyBetTimer');
+    if (timerEl) {
+      timerEl.textContent = state.timer > 0 ? '-0:' + String(state.timer).padStart(2,'0') : 'OFF';
+      timerEl.className = 'sky-hdr-timer' + (state.timer <= 5 ? ' urgent' : '');
+    }
+
+    const oddsEl = document.getElementById('skyOddsScroll');
+    if (oddsEl) {
+      oddsEl.innerHTML = sorted.map((h, i) => {
+        const origIdx = horses.indexOf(h);
+        const barrier = origIdx + 1;
+        const betOnThis = Object.values(state.bets||{}).filter(b=>b.horseId===h.id).length;
+        if (h.scratched) return `
+          <div class="sky-odds-row sky-scr">
+            <span class="sky-or-num">${origIdx+1}</span>
+            <span class="sky-or-odds" style="color:#888">SCR</span>
+            <span class="sky-or-name"><s>${h.name}</s></span>
+            <span class="sky-or-barrier">(${barrier})</span>
+          </div>`;
+        return `
+          <div class="sky-odds-row ${i === 0 ? 'sky-fav' : ''} ${betOnThis > 0 ? 'sky-backed' : ''}">
+            <span class="sky-or-num">${origIdx+1}</span>
+            <span class="sky-or-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds.toFixed(2)}</span>
+            <span class="sky-or-name" style="color:${h.color}">${h.name}</span>
+            <span class="sky-or-barrier">(${barrier})</span>
+          </div>`;
+      }).join('');
+    }
+
+    const betsEl = document.getElementById('skyBetsStrip');
+    if (betsEl) {
+      if (Object.keys(state.bets||{}).length > 0) {
+        betsEl.innerHTML = `<div class="sky-bets-strip">${Object.entries(state.bets).map(([pid, bet]) => {
+          const p = players.find(pl => pl.id === pid);
+          const horse = horses.find(h => h.id === bet.horseId);
+          return `<span class="sky-bet-tag">${p?.name||'?'} → #${horses.indexOf(horse)+1} $${bet.amount}</span>`;
+        }).join('')}</div>`;
+      } else {
+        betsEl.innerHTML = '';
+      }
+    }
+
+    const infoEl = document.getElementById('skyPreviewInfo');
+    if (infoEl) infoEl.textContent = state.commentary || '';
+
     if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
       Race3D.updateHorses(horses, 'betting');
     }

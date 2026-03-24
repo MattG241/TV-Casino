@@ -29,24 +29,28 @@ const Race3D = (() => {
   function buildTrack() {
     trackPoints = [];
     trackTangents = [];
+    const totalPerimeter = 2 * STRAIGHT + 2 * Math.PI * RADIUS;
     for (let i = 0; i <= TRACK_SEGMENTS; i++) {
       const t = i / TRACK_SEGMENTS;
-      const totalPerimeter = 2 * STRAIGHT + 2 * Math.PI * RADIUS;
       let d = t * totalPerimeter;
       let x, z, tx, tz;
       if (d < STRAIGHT) {
-        x = -STRAIGHT / 2 + d; z = RADIUS; tx = 1; tz = 0;
+        // Home straight (near side): right-to-left at z=RADIUS (clockwise)
+        x = STRAIGHT / 2 - d; z = RADIUS; tx = -1; tz = 0;
       } else if (d < STRAIGHT + Math.PI * RADIUS) {
-        const angle = (d - STRAIGHT) / RADIUS - Math.PI / 2;
-        x = STRAIGHT / 2 + Math.cos(angle) * RADIUS;
+        // Left corner: clockwise semicircle centered at (-STRAIGHT/2, 0)
+        const angle = Math.PI / 2 + (d - STRAIGHT) / RADIUS;
+        x = -STRAIGHT / 2 + Math.cos(angle) * RADIUS;
         z = Math.sin(angle) * RADIUS;
         tx = -Math.sin(angle); tz = Math.cos(angle);
       } else if (d < 2 * STRAIGHT + Math.PI * RADIUS) {
+        // Back straight: left-to-right at z=-RADIUS
         const along = d - STRAIGHT - Math.PI * RADIUS;
-        x = STRAIGHT / 2 - along; z = -RADIUS; tx = -1; tz = 0;
+        x = -STRAIGHT / 2 + along; z = -RADIUS; tx = 1; tz = 0;
       } else {
-        const angle = (d - 2 * STRAIGHT - Math.PI * RADIUS) / RADIUS + Math.PI / 2;
-        x = -STRAIGHT / 2 + Math.cos(angle) * RADIUS;
+        // Right corner: clockwise semicircle centered at (STRAIGHT/2, 0)
+        const angle = -Math.PI / 2 + (d - 2 * STRAIGHT - Math.PI * RADIUS) / RADIUS;
+        x = STRAIGHT / 2 + Math.cos(angle) * RADIUS;
         z = Math.sin(angle) * RADIUS;
         tx = -Math.sin(angle); tz = Math.cos(angle);
       }
