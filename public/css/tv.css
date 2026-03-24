@@ -16,7 +16,7 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-body {
+html, body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: var(--bg-dark);
   color: var(--text);
@@ -25,22 +25,75 @@ body {
   overflow: hidden;
 }
 
-@keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+/* Force everything to fit in viewport */
+html { height: 100vh; height: 100dvh; }
+body { height: 100vh; height: 100dvh; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 @keyframes glow { 0%,100% { box-shadow: 0 0 40px rgba(255,215,0,0.2); } 50% { box-shadow: 0 0 80px rgba(255,215,0,0.5); } }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 @keyframes raceRun { 0% { transform: translateX(0); } 25% { transform: translateX(-3px) translateY(-4px); } 50% { transform: translateX(0); } 75% { transform: translateX(3px) translateY(-4px); } 100% { transform: translateX(0); } }
 @keyframes spinWheel { from { transform: rotate(0deg); } to { transform: rotate(1440deg); } }
 @keyframes bounceIn { 0% { transform: scale(0.3); opacity: 0; } 50% { transform: scale(1.05); } 70% { transform: scale(0.9); } 100% { transform: scale(1); opacity: 1; } }
 @keyframes confetti { 0% { transform: translateY(0) rotate(0); opacity: 1; } 100% { transform: translateY(500px) rotate(720deg); opacity: 0; } }
+@keyframes promptPulse { 0%,100% { opacity: 0.7; transform: scale(1); } 50% { opacity: 1; transform: scale(1.02); } }
 
+/* ── Fullscreen Prompt ────────────────────────────────────────────────── */
+.fullscreen-prompt {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.92);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.fullscreen-prompt.hidden { display: none; }
+
+.fullscreen-prompt-content {
+  text-align: center;
+  animation: promptPulse 2s ease infinite;
+}
+
+.fullscreen-icon { font-size: 80px; margin-bottom: 16px; }
+
+.fullscreen-prompt-content h2 {
+  font-size: 48px;
+  background: linear-gradient(135deg, var(--gold), #fff8e1, var(--gold));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
+  letter-spacing: 6px;
+  margin-bottom: 16px;
+}
+
+.fullscreen-prompt-content p {
+  font-size: 24px;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.fullscreen-hint {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+/* ── TV Container ─────────────────────────────────────────────────────── */
 .tv-container {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
-  padding: 16px 24px;
+  padding: 8px 16px;
   position: relative;
   overflow: hidden;
   background:
@@ -54,12 +107,18 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
   flex-shrink: 0;
+  height: 40px;
+}
+
+.tv-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .tv-logo {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 900;
   background: linear-gradient(135deg, var(--gold), #fff8e1, var(--gold));
   background-size: 200% auto;
@@ -70,57 +129,69 @@ body {
 }
 
 .tv-room-code {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--gold);
   background: var(--bg-card);
-  padding: 8px 16px;
-  border-radius: 12px;
+  padding: 4px 12px;
+  border-radius: 8px;
   border: 2px solid var(--gold-dark);
   letter-spacing: 6px;
 }
 
+.tv-sound-toggle {
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tv-sound-toggle:hover { border-color: var(--gold); }
+
 /* ── TV Players Bar ────────────────────────────────────────────────────── */
 .tv-players {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: center;
-  padding: 8px 0;
-  margin-bottom: 8px;
+  padding: 4px 0;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .tv-player {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: 6px;
+  padding: 4px 10px;
   background: var(--bg-card);
-  border-radius: 12px;
+  border-radius: 8px;
   border: 2px solid var(--border);
   transition: all 0.3s;
 }
 
 .tv-player.active {
   border-color: var(--gold);
-  box-shadow: 0 0 30px rgba(255,215,0,0.2);
+  box-shadow: 0 0 20px rgba(255,215,0,0.2);
 }
 
 .tv-player.winner {
   border-color: var(--green);
-  box-shadow: 0 0 30px rgba(0,200,83,0.3);
+  box-shadow: 0 0 20px rgba(0,200,83,0.3);
 }
 
-.tv-player .avatar { font-size: 28px; }
-.tv-player .name { font-size: 15px; font-weight: 700; }
-.tv-player .chips { color: var(--gold); font-size: 15px; font-weight: 800; }
+.tv-player .avatar { font-size: 22px; }
+.tv-player .name { font-size: 13px; font-weight: 700; }
+.tv-player .chips { color: var(--gold); font-size: 13px; font-weight: 800; }
 .tv-player .host-badge {
   background: var(--gold);
   color: #000;
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 8px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -136,28 +207,23 @@ body {
   overflow: hidden;
 }
 
-.tv-screen { display: none; width: 100%; max-height: 100%; }
-.tv-screen.active { display: flex; flex-direction: column; align-items: center; animation: fadeIn 0.5s ease; overflow: hidden; }
+.tv-screen { display: none; width: 100%; height: 100%; max-height: 100%; }
+.tv-screen.active {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+  overflow: hidden;
+}
 
 /* ── TV Waiting Screen ─────────────────────────────────────────────────── */
-.tv-waiting {
-  text-align: center;
-}
-
-.tv-waiting h2 {
-  font-size: 30px;
-  margin-bottom: 12px;
-}
-
-.tv-waiting .join-instructions {
-  font-size: 20px;
-  color: var(--text-dim);
-  margin-bottom: 20px;
-}
-
+.tv-waiting { text-align: center; }
+.tv-waiting h2 { font-size: 28px; margin-bottom: 8px; }
+.tv-waiting .join-instructions { font-size: 18px; color: var(--text-dim); margin-bottom: 16px; }
 .tv-qr-placeholder {
-  width: 150px;
-  height: 150px;
+  width: 120px;
+  height: 120px;
   background: var(--bg-card);
   border-radius: 16px;
   display: flex;
@@ -166,20 +232,37 @@ body {
   margin: 0 auto;
   border: 2px solid var(--border);
 }
-
-.tv-qr-placeholder span { font-size: 60px; }
+.tv-qr-placeholder span { font-size: 50px; }
 
 /* ── TV Roulette ───────────────────────────────────────────────────────── */
 .tv-roulette {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.tv-roulette-layout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  width: 100%;
+}
+
+.tv-roulette-center {
+  display: flex;
+  flex-direction: column;
   align-items: center;
 }
 
 .tv-roulette-wheel {
-  width: 200px;
-  height: 200px;
+  width: 180px;
+  height: 180px;
   border-radius: 50%;
-  border: 6px solid var(--gold);
+  border: 5px solid var(--gold);
   background: conic-gradient(
     #e74c3c 0deg 10deg, #1a1a2e 10deg 20deg,
     #e74c3c 20deg 30deg, #1a1a2e 30deg 40deg,
@@ -204,57 +287,62 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 40px rgba(255,215,0,0.2);
-  transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
-  margin: 10px 0;
+  box-shadow: 0 0 30px rgba(255,215,0,0.2);
+  flex-shrink: 0;
 }
 
 .tv-roulette-wheel.spinning {
-  animation: spinWheel 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+  animation: spinWheel 4s cubic-bezier(0.17, 0.67, 0.12, 0.99) forwards;
 }
 
 .tv-roulette-wheel .center {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   background: var(--bg-dark);
   border-radius: 50%;
   border: 3px solid var(--gold);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 900;
 }
 
-.tv-result-display {
-  margin: 10px 0;
-  text-align: center;
-}
+.tv-result-display { text-align: center; }
 
 .tv-result-number {
-  font-size: 80px;
+  font-size: 64px;
   font-weight: 900;
   animation: bounceIn 0.6s ease;
+  line-height: 1;
 }
 
 .tv-result-number.red { color: var(--red); }
 .tv-result-number.black { color: #aaa; }
 .tv-result-number.green { color: var(--green); }
 
+.tv-result-color {
+  font-size: 20px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
 .tv-history {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 4px;
+  justify-content: center;
+  margin-top: 6px;
 }
 
 .tv-history-num {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 800;
   color: #fff;
 }
@@ -265,58 +353,62 @@ body {
 
 .tv-bets-list {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   justify-content: center;
-  margin-top: 8px;
+  max-width: 500px;
 }
 
 .tv-bet-card {
   background: var(--bg-card);
-  border-radius: 10px;
-  padding: 8px 14px;
+  border-radius: 8px;
+  padding: 4px 10px;
   border: 1px solid var(--border);
   text-align: center;
 }
 
-.tv-bet-card .player-name { font-size: 12px; color: var(--text-dim); }
-.tv-bet-card .bet-info { font-size: 15px; font-weight: 700; color: var(--gold); }
+.tv-bet-card .player-name { font-size: 11px; color: var(--text-dim); }
+.tv-bet-card .bet-info { font-size: 13px; font-weight: 700; color: var(--gold); }
 
 /* ── TV Slots ──────────────────────────────────────────────────────────── */
 .tv-slots {
   width: 100%;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 
 .tv-slots-machine {
   background: linear-gradient(135deg, #1a1a3e, #141428);
   border: 3px solid var(--gold);
-  border-radius: 20px;
-  padding: 20px 30px;
-  box-shadow: 0 0 40px rgba(255,215,0,0.15);
+  border-radius: 16px;
+  padding: 12px 24px;
+  box-shadow: 0 0 30px rgba(255,215,0,0.15);
 }
 
 .tv-slots-title {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 900;
   color: var(--gold);
   text-align: center;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   text-shadow: 0 0 20px rgba(255,215,0,0.3);
 }
 
 .tv-reels {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .tv-reel {
-  width: 120px;
-  height: 240px;
+  width: 90px;
+  height: 180px;
   background: var(--bg-dark);
-  border-radius: 12px;
-  border: 3px solid var(--border);
+  border-radius: 10px;
+  border: 2px solid var(--border);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -325,12 +417,12 @@ body {
 }
 
 .tv-slot-symbol {
-  font-size: 48px;
-  padding: 8px;
+  font-size: 36px;
+  padding: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 80px;
+  height: 60px;
 }
 
 .tv-slot-symbol.middle {
@@ -341,8 +433,8 @@ body {
 
 .tv-win-display {
   text-align: center;
-  margin-top: 12px;
-  font-size: 36px;
+  margin-top: 8px;
+  font-size: 28px;
   font-weight: 900;
   color: var(--gold);
   animation: pulse 0.5s ease 3;
@@ -351,46 +443,50 @@ body {
 /* ── TV Blackjack ──────────────────────────────────────────────────────── */
 .tv-blackjack {
   width: 100%;
-}
-
-.tv-bj-table {
-  background: linear-gradient(135deg, #0d5c2e, #0a4a24);
-  border-radius: 20px;
-  padding: 20px 24px;
-  border: 3px solid #1a7a42;
-  width: 100%;
-}
-
-.tv-dealer-area, .tv-players-area {
-  margin: 8px 0;
-}
-
-.tv-hand-label {
-  font-size: 15px;
-  color: rgba(255,255,255,0.6);
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  margin-bottom: 8px;
-}
-
-.tv-cards-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.tv-card {
-  width: 56px;
-  height: 78px;
-  background: #fff;
-  border-radius: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  height: 100%;
+}
+
+.tv-bj-table {
+  background: linear-gradient(135deg, #0d5c2e, #0a4a24);
+  border-radius: 16px;
+  padding: 12px 20px;
+  border: 3px solid #1a7a42;
+  width: 95%;
+  max-width: 900px;
+}
+
+.tv-dealer-area, .tv-players-area { margin: 4px 0; }
+
+.tv-hand-label {
+  font-size: 13px;
+  color: rgba(255,255,255,0.6);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+
+.tv-cards-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tv-card {
+  width: 44px;
+  height: 62px;
+  background: #fff;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
   font-weight: 800;
-  box-shadow: 3px 3px 8px rgba(0,0,0,0.4);
+  box-shadow: 2px 2px 6px rgba(0,0,0,0.4);
   animation: fadeIn 0.3s ease;
 }
 
@@ -401,68 +497,69 @@ body {
   background: linear-gradient(135deg, #1a3a8a, #0d2357);
   color: transparent;
 }
-
 .tv-card.hidden::after {
   content: '?';
   color: rgba(255,255,255,0.3);
-  font-size: 36px;
+  font-size: 28px;
 }
 
-.tv-card .card-rank { font-size: 17px; }
-.tv-card .card-suit { font-size: 14px; }
+.tv-card .card-rank { font-size: 14px; }
+.tv-card .card-suit { font-size: 12px; }
 
 .tv-hand-value {
   display: inline-block;
   background: rgba(0,0,0,0.5);
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 16px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 14px;
   font-weight: 800;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .tv-player-hands {
   display: flex;
-  gap: 16px;
+  gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
 }
 
 .tv-player-hand {
   background: rgba(0,0,0,0.2);
-  border-radius: 12px;
-  padding: 10px;
+  border-radius: 10px;
+  padding: 6px 8px;
   border: 2px solid transparent;
-  min-width: 140px;
+  min-width: 120px;
 }
 
-.tv-player-hand.active {
-  border-color: var(--gold);
-}
-
+.tv-player-hand.active { border-color: var(--gold); }
 .tv-player-hand.bust { opacity: 0.5; }
 .tv-player-hand.win { border-color: var(--green); }
 .tv-player-hand.lose { border-color: var(--red); opacity: 0.7; }
 
 .tv-bj-result {
   text-align: center;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 900;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 /* ── TV Poker ──────────────────────────────────────────────────────────── */
 .tv-poker {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 
 .tv-poker-table {
   background: linear-gradient(135deg, #0d4c2c, #0a3a20);
   border-radius: 50%;
-  padding: 24px 32px;
+  padding: 16px 24px;
   border: 4px solid #1a6a38;
-  width: 90%;
-  max-width: 800px;
+  width: 85%;
+  max-width: 750px;
   aspect-ratio: 16/9;
   display: flex;
   flex-direction: column;
@@ -470,86 +567,81 @@ body {
   justify-content: center;
   position: relative;
   margin: 0 auto;
-  box-shadow: 0 0 60px rgba(0,0,0,0.5);
+  box-shadow: 0 0 40px rgba(0,0,0,0.5);
 }
 
 .tv-community-cards {
   display: flex;
-  gap: 8px;
-  margin: 8px 0;
+  gap: 6px;
+  margin: 4px 0;
 }
 
 .tv-pot {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 900;
   color: var(--gold);
-  margin: 6px 0;
+  margin: 2px 0;
 }
 
 .tv-poker-players {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
-  margin-top: 8px;
+  margin-top: 4px;
   width: 100%;
 }
 
 .tv-poker-seat {
   background: rgba(0,0,0,0.3);
-  border-radius: 12px;
-  padding: 8px 12px;
+  border-radius: 10px;
+  padding: 4px 8px;
   border: 2px solid transparent;
   text-align: center;
-  min-width: 110px;
+  min-width: 90px;
 }
 
 .tv-poker-seat.active { border-color: var(--gold); }
 .tv-poker-seat.folded { opacity: 0.4; }
-.tv-poker-seat.winner { border-color: var(--green); box-shadow: 0 0 20px rgba(0,200,83,0.3); }
+.tv-poker-seat.winner { border-color: var(--green); box-shadow: 0 0 15px rgba(0,200,83,0.3); }
 
 /* ── TV Horse Racing ───────────────────────────────────────────────────── */
 .tv-horseracing {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 
 .tv-race-track {
   background: var(--bg-card);
-  border-radius: 16px;
-  padding: 14px 18px;
+  border-radius: 12px;
+  padding: 8px 14px;
   border: 2px solid var(--border);
-  width: 100%;
+  width: 95%;
+  max-width: 900px;
 }
 
 .tv-horse-lane {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 0;
+  gap: 10px;
+  padding: 3px 0;
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .tv-horse-lane:last-child { border-bottom: none; }
-
-.tv-horse-info {
-  min-width: 110px;
-}
-
-.tv-horse-name {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.tv-horse-odds {
-  color: var(--text-dim);
-  font-size: 12px;
-}
+.tv-horse-info { min-width: 100px; }
+.tv-horse-name { font-size: 13px; font-weight: 700; }
+.tv-horse-odds { color: var(--text-dim); font-size: 11px; }
 
 .tv-track-lane {
   flex: 1;
-  height: 36px;
+  height: 30px;
   background: var(--bg-dark);
-  border-radius: 18px;
+  border-radius: 15px;
   position: relative;
   overflow: hidden;
 }
@@ -559,42 +651,35 @@ body {
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 28px;
+  font-size: 22px;
   transition: left 0.1s linear;
 }
 
-.tv-horse-marker.racing {
-  animation: raceRun 0.15s infinite;
-}
+.tv-horse-marker.racing { animation: raceRun 0.15s infinite; }
 
 .tv-finish-line {
   position: absolute;
-  right: 12px;
+  right: 10px;
   top: 0;
   bottom: 0;
-  width: 4px;
-  background: repeating-linear-gradient(
-    to bottom,
-    #fff 0px, #fff 6px,
-    #000 6px, #000 12px
-  );
+  width: 3px;
+  background: repeating-linear-gradient(to bottom, #fff 0px, #fff 4px, #000 4px, #000 8px);
 }
 
 .tv-race-result {
   text-align: center;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 900;
-  margin-top: 12px;
+  margin-top: 8px;
   animation: bounceIn 0.6s ease;
 }
 
 /* ── TV Timer ──────────────────────────────────────────────────────────── */
 .tv-timer {
-  font-size: 48px;
+  font-size: 36px;
   font-weight: 900;
   color: var(--gold);
   text-align: center;
-  margin: 6px 0;
 }
 
 .tv-timer.urgent { color: var(--red); animation: pulse 0.5s infinite; }
@@ -602,9 +687,9 @@ body {
 /* ── TV Status ─────────────────────────────────────────────────────────── */
 .tv-status {
   text-align: center;
-  font-size: 22px;
+  font-size: 18px;
   color: var(--text-dim);
-  margin: 6px 0;
+  margin: 2px 0;
 }
 
 /* ── Confetti ──────────────────────────────────────────────────────────── */
@@ -621,8 +706,8 @@ body {
 .confetti-piece {
   position: absolute;
   top: -20px;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 2px;
   animation: confetti 2s ease forwards;
 }

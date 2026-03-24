@@ -13,6 +13,57 @@ const RED_NUMBERS = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
 let roomCode = '';
 let players = [];
 let currentGame = null;
+let lastRoulettePhase = null;
+
+// ── Fullscreen Management ────────────────────────────────────────────────
+
+function goFullscreen() {
+  const el = document.documentElement;
+  const rfs = el.requestFullscreen || el.webkitRequestFullscreen ||
+              el.mozRequestFullScreen || el.msRequestFullscreen;
+  if (rfs) rfs.call(el).catch(() => {});
+}
+
+function exitFullscreen() {
+  const efs = document.exitFullscreen || document.webkitExitFullscreen ||
+              document.mozCancelFullScreen || document.msExitFullscreen;
+  if (efs && document.fullscreenElement) efs.call(document).catch(() => {});
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    exitFullscreen();
+  } else {
+    goFullscreen();
+  }
+}
+
+// Fullscreen prompt - click to enter fullscreen and dismiss
+const prompt = document.getElementById('fullscreenPrompt');
+if (prompt) {
+  prompt.addEventListener('click', () => {
+    goFullscreen();
+    prompt.classList.add('hidden');
+    // Init audio context on first user gesture
+    CasinoAudio.startMusic();
+  });
+}
+
+// Double-click anywhere to toggle fullscreen
+document.addEventListener('dblclick', (e) => {
+  if (e.target.closest('.tv-sound-toggle')) return;
+  toggleFullscreen();
+});
+
+// Sound toggle button
+const soundBtn = document.getElementById('soundToggle');
+if (soundBtn) {
+  soundBtn.addEventListener('click', () => {
+    const on = CasinoAudio.toggle();
+    soundBtn.textContent = on ? '🔊' : '🔇';
+    if (on) CasinoAudio.startMusic();
+  });
+}
 
 // ── Auto-connect: get room code from URL or prompt ──────────────────────
 
@@ -22,7 +73,6 @@ function init() {
   if (code) {
     connectToRoom(code);
   }
-  // Show connection URL
   const url = window.location.port && window.location.port !== '443' && window.location.port !== '80'
     ? window.location.hostname + ':' + window.location.port
     : window.location.hostname;
@@ -39,6 +89,8 @@ function connectToRoom(code) {
 let codeBuffer = '';
 document.addEventListener('keydown', (e) => {
   if (roomCode) return;
+  // F11 for fullscreen
+  if (e.key === 'F11') { e.preventDefault(); toggleFullscreen(); return; }
   if (e.key === 'Enter' && codeBuffer.length === 4) {
     connectToRoom(codeBuffer);
     codeBuffer = '';
@@ -63,6 +115,7 @@ socket.on('tv:connected', (data) => {
     currentGame = data.currentGame;
     showTVScreen('tv' + capitalize(data.currentGame));
   }
+  CasinoAudio.playerJoin();
 });
 
 socket.on('room:error', (data) => {
@@ -70,13 +123,16 @@ socket.on('room:error', (data) => {
 });
 
 socket.on('players:update', (data) => {
+  const prevCount = players.length;
   players = data;
   renderPlayers();
+  if (data.length > prevCount) CasinoAudio.playerJoin();
 });
 
 socket.on('game:started', ({ game }) => {
   currentGame = game;
   showTVScreen('tv' + capitalize(game));
+  CasinoAudio.gameStart();
 });
 
 socket.on('game:state', ({ game, state }) => {
@@ -92,6 +148,8 @@ socket.on('game:timer', ({ timer }) => {
   if (el) {
     el.textContent = timer;
     el.classList.toggle('urgent', timer <= 5);
+    if (timer <= 5 && timer > 0) CasinoAudio.urgentTick();
+    else if (timer > 5) CasinoAudio.tick();
   }
 });
 
@@ -163,53 +221,75 @@ function renderTVRoulette(state) {
   const el = document.getElementById('tvRouletteContent');
 
   if (state.phase === 'betting') {
+    if (lastRoulettePhase !== 'betting') CasinoAudio.chip();
+    lastRoulettePhase = 'betting';
     const betEntries = Object.entries(state.bets || {});
     el.innerHTML = `
-      <div class="tv-timer" ${state.timer <= 5 ? 'class="urgent"' : ''}>${state.timer}</div>
+      <div class="tv-timer" ${state.timer <= 5 ? 'style="color:var(--red)"' : ''}>${state.timer || ''}</div>
       <div class="tv-status">Place your bets!</div>
-      <div class="tv-roulette-wheel">
-        <div class="center">?</div>
+      <div class="tv-roulette-layout">
+        <div class="tv-roulette-center">
+          <div class="tv-roulette-wheel">
+            <div class="center">?</div>
+          </div>
+        </div>
+        ${betEntries.length > 0 ? `
+          <div class="tv-bets-list">
+            ${betEntries.map(([pid, bets]) => {
+              const p = players.find(pl => pl.id === pid);
+              return bets.map(b => `
+                <div class="tv-bet-card">
+                  <div class="player-name">${p?.name || 'Player'}</div>
+                  <div class="bet-info">$${b.amount} on ${b.value !== undefined ? b.value : b.type}</div>
+                </div>
+              `).join('');
+            }).join('')}
+          </div>
+        ` : ''}
       </div>
-      ${betEntries.length > 0 ? `
+      ${renderTVHistory(state.history)}
+    `;
+  } else if (state.phase === 'spinning') {
+    if (lastRoulettePhase !== 'spinning') CasinoAudio.spin();
+    lastRoulettePhase = 'spinning';
+    el.innerHTML = `
+      <div class="tv-roulette-layout">
+        <div class="tv-roulette-center">
+          <div class="tv-roulette-wheel spinning">
+            <div class="center">?</div>
+          </div>
+          <div class="tv-status" style="font-size:28px;color:var(--gold);margin-top:8px">Spinning...</div>
+        </div>
+      </div>
+    `;
+  } else if (state.phase === 'result' && state.result) {
+    if (lastRoulettePhase !== 'result') {
+      CasinoAudio.ballLand();
+      const winners = Object.entries(state.bets || {}).some(([, bets]) => bets.some(b => b.won));
+      setTimeout(() => { if (winners) CasinoAudio.bigWin(); else CasinoAudio.lose(); }, 400);
+    }
+    lastRoulettePhase = 'result';
+    el.innerHTML = `
+      <div class="tv-roulette-layout">
+        <div class="tv-roulette-center">
+          <div class="tv-result-display">
+            <div class="tv-result-number ${state.result.color}">${state.result.number}</div>
+            <div class="tv-result-color">${state.result.color}</div>
+          </div>
+        </div>
         <div class="tv-bets-list">
-          ${betEntries.map(([pid, bets]) => {
+          ${Object.entries(state.bets || {}).map(([pid, bets]) => {
             const p = players.find(pl => pl.id === pid);
             return bets.map(b => `
-              <div class="tv-bet-card">
+              <div class="tv-bet-card" style="border-color:${b.won ? 'var(--green)' : 'var(--red)'}">
                 <div class="player-name">${p?.name || 'Player'}</div>
-                <div class="bet-info">$${b.amount} on ${b.value !== undefined ? b.value : b.type}</div>
+                <div class="bet-info" style="color:${b.won ? 'var(--green)' : 'var(--red)'}">
+                  ${b.won ? `WON $${b.winAmount}` : `Lost $${b.amount}`}
+                </div>
               </div>
             `).join('');
           }).join('')}
         </div>
-      ` : ''}
-      ${renderTVHistory(state.history)}
-    `;
-  } else if (state.phase === 'spinning') {
-    el.innerHTML = `
-      <div class="tv-roulette-wheel spinning">
-        <div class="center">?</div>
-      </div>
-      <div class="tv-status" style="font-size:36px;color:var(--gold)">Spinning...</div>
-    `;
-  } else if (state.phase === 'result' && state.result) {
-    el.innerHTML = `
-      <div class="tv-result-display">
-        <div class="tv-result-number ${state.result.color}">${state.result.number}</div>
-        <div style="font-size:28px;text-transform:uppercase;color:var(--text-dim)">${state.result.color}</div>
-      </div>
-      <div class="tv-bets-list">
-        ${Object.entries(state.bets || {}).map(([pid, bets]) => {
-          const p = players.find(pl => pl.id === pid);
-          return bets.map(b => `
-            <div class="tv-bet-card" style="border-color:${b.won ? 'var(--green)' : 'var(--red)'}">
-              <div class="player-name">${p?.name || 'Player'}</div>
-              <div class="bet-info" style="color:${b.won ? 'var(--green)' : 'var(--red)'}">
-                ${b.won ? `WON $${b.winAmount}` : `Lost $${b.amount}`}
-              </div>
-            </div>
-          `).join('');
-        }).join('')}
       </div>
       ${renderTVHistory(state.history)}
     `;
@@ -220,7 +300,7 @@ function renderTVRoulette(state) {
 
 function renderTVHistory(history) {
   if (!history || history.length === 0) return '';
-  return `<div class="tv-history" style="justify-content:center;margin-top:20px">
+  return `<div class="tv-history">
     ${history.slice(0, 15).map(h =>
       `<div class="tv-history-num ${h.color}">${h.number}</div>`
     ).join('')}
@@ -228,6 +308,8 @@ function renderTVHistory(history) {
 }
 
 // ── TV SLOTS ────────────────────────────────────────────────────────────
+
+let lastSlotsResult = null;
 
 function renderTVSlots(state) {
   const el = document.getElementById('tvSlotsContent');
@@ -237,10 +319,21 @@ function renderTVSlots(state) {
   if (latestResult) {
     const [pid, result] = latestResult;
     const p = players.find(pl => pl.id === pid);
+
+    // Play sounds on new result
+    if (lastSlotsResult !== pid + JSON.stringify(result.reels)) {
+      lastSlotsResult = pid + JSON.stringify(result.reels);
+      CasinoAudio.slotSpin();
+      setTimeout(() => {
+        CasinoAudio.slotStop();
+        if (result.winAmount > 0) setTimeout(() => CasinoAudio.win(), 300);
+      }, 800);
+    }
+
     el.innerHTML = `
       <div class="tv-slots-machine">
         <div class="tv-slots-title">LUCKY SLOTS</div>
-        <div style="text-align:center;font-size:20px;margin-bottom:16px;color:var(--text-dim)">
+        <div style="text-align:center;font-size:16px;margin-bottom:8px;color:var(--text-dim)">
           ${p?.name || 'Player'} spins!
         </div>
         <div class="tv-reels">
@@ -255,7 +348,7 @@ function renderTVSlots(state) {
         ${result.winAmount > 0 ? `
           <div class="tv-win-display">${p?.name} WINS $${result.winAmount}! (${result.multiplier}x)</div>
         ` : `
-          <div style="text-align:center;font-size:24px;color:var(--text-dim);margin-top:20px">No win this time</div>
+          <div style="text-align:center;font-size:18px;color:var(--text-dim);margin-top:8px">No win this time</div>
         `}
       </div>
     `;
@@ -281,23 +374,36 @@ function renderTVSlots(state) {
 
 // ── TV BLACKJACK ────────────────────────────────────────────────────────
 
+let lastBJPhase = null;
+
 function renderTVBlackjack(state) {
   const el = document.getElementById('tvBlackjackContent');
   const dealerHand = state.dealerHand || [];
   const dealerVal = dealerHand.every(c => c.rank !== 'hidden') ? handValueCalc(dealerHand) : '?';
 
   if (state.phase === 'betting') {
+    if (lastBJPhase !== 'betting') CasinoAudio.chip();
+    lastBJPhase = 'betting';
     const betters = Object.keys(state.bets || {});
     el.innerHTML = `
       <div class="tv-bj-table">
-        <div style="text-align:center;font-size:32px;font-weight:800;color:var(--gold)">BLACKJACK</div>
+        <div style="text-align:center;font-size:26px;font-weight:800;color:var(--gold)">BLACKJACK</div>
         <div class="tv-status">Place your bets!</div>
-        <div style="text-align:center;margin-top:16px;font-size:20px;color:var(--text-dim)">
+        <div style="text-align:center;margin-top:8px;font-size:16px;color:var(--text-dim)">
           ${betters.length} player(s) ready
         </div>
       </div>
     `;
     return;
+  }
+
+  if (state.phase !== lastBJPhase) {
+    if (state.phase === 'playing') CasinoAudio.card();
+    else if (state.phase === 'result') {
+      const anyWin = Object.values(state.results || {}).some(r => r === 'win' || r === 'blackjack_win');
+      if (anyWin) CasinoAudio.win(); else CasinoAudio.lose();
+    }
+    lastBJPhase = state.phase;
   }
 
   const playerHands = Object.entries(state.hands || {});
@@ -309,7 +415,7 @@ function renderTVBlackjack(state) {
         <div class="tv-cards-row">${dealerHand.map(c => renderTVCard(c)).join('')}</div>
       </div>
 
-      <div style="border-top:2px solid rgba(255,255,255,0.1);margin:20px 0"></div>
+      <div style="border-top:2px solid rgba(255,255,255,0.1);margin:8px 0"></div>
 
       <div class="tv-players-area">
         <div class="tv-hand-label">Players</div>
@@ -327,7 +433,7 @@ function renderTVBlackjack(state) {
 
             return `
               <div class="tv-player-hand ${cls}">
-                <div style="font-size:16px;font-weight:700;margin-bottom:8px">
+                <div style="font-size:14px;font-weight:700;margin-bottom:4px">
                   ${AVATARS[p?.avatar] || '😎'} ${p?.name || 'Player'}
                 </div>
                 <div class="tv-cards-row">${hand.map(c => renderTVCard(c)).join('')}</div>
@@ -358,10 +464,18 @@ function renderTVBlackjack(state) {
 
 // ── TV POKER ────────────────────────────────────────────────────────────
 
+let lastPokerPhase = null;
+
 function renderTVPoker(state) {
   const el = document.getElementById('tvPokerContent');
   const community = state.community || [];
   const isShowdown = state.phase === 'result' || state.phase === 'showdown';
+
+  if (state.phase !== lastPokerPhase) {
+    if (state.phase === 'flop' || state.phase === 'turn' || state.phase === 'river') CasinoAudio.card();
+    if (state.phase === 'result' && state.winner) CasinoAudio.bigWin();
+    lastPokerPhase = state.phase;
+  }
 
   el.innerHTML = `
     <div class="tv-poker-table">
@@ -369,12 +483,12 @@ function renderTVPoker(state) {
 
       <div class="tv-community-cards">
         ${community.length > 0 ? community.map(c => renderTVCard(c)).join('') :
-          `<div style="color:rgba(255,255,255,0.3);font-size:20px">
+          `<div style="color:rgba(255,255,255,0.3);font-size:16px">
             ${state.phase === 'preflop' ? 'Pre-flop' : 'Waiting...'}
           </div>`}
       </div>
 
-      <div style="font-size:18px;color:var(--text-dim);margin:8px 0;text-transform:uppercase">
+      <div style="font-size:14px;color:var(--text-dim);margin:4px 0;text-transform:uppercase">
         ${state.phase}
       </div>
 
@@ -389,20 +503,20 @@ function renderTVPoker(state) {
 
           return `
             <div class="tv-poker-seat ${isActive ? 'active' : ''} ${isFolded ? 'folded' : ''} ${isWinner ? 'winner' : ''}">
-              <div style="font-size:28px">${AVATARS[p?.avatar] || '😎'}</div>
-              <div style="font-size:16px;font-weight:700">${p?.name || 'Player'}</div>
-              <div style="color:var(--gold);font-size:14px">$${p?.chips?.toLocaleString() || 0}</div>
-              ${roundBet > 0 ? `<div style="color:var(--green);font-size:13px">Bet: $${roundBet}</div>` : ''}
-              ${isFolded ? '<div style="color:var(--red);font-size:12px">FOLDED</div>' : ''}
-              ${isWinner ? '<div style="color:var(--green);font-size:16px;font-weight:800">WINNER!</div>' : ''}
+              <div style="font-size:22px">${AVATARS[p?.avatar] || '😎'}</div>
+              <div style="font-size:13px;font-weight:700">${p?.name || 'Player'}</div>
+              <div style="color:var(--gold);font-size:12px">$${p?.chips?.toLocaleString() || 0}</div>
+              ${roundBet > 0 ? `<div style="color:var(--green);font-size:11px">Bet: $${roundBet}</div>` : ''}
+              ${isFolded ? '<div style="color:var(--red);font-size:11px">FOLDED</div>' : ''}
+              ${isWinner ? '<div style="color:var(--green);font-size:14px;font-weight:800">WINNER!</div>' : ''}
               ${hand ? `
-                <div style="display:flex;gap:4px;margin-top:4px;justify-content:center">
+                <div style="display:flex;gap:3px;margin-top:2px;justify-content:center">
                   ${Array.isArray(hand) ? hand.map(c => renderTVCard(c)).join('') :
-                    `<div style="font-size:11px;color:var(--text-dim)">${state.handBacks?.[pid] || 2} cards</div>`}
+                    `<div style="font-size:10px;color:var(--text-dim)">${state.handBacks?.[pid] || 2} cards</div>`}
                 </div>
               ` : `
-                <div style="display:flex;gap:2px;margin-top:4px;justify-content:center">
-                  ${!isFolded ? '<div class="tv-card hidden" style="width:36px;height:50px;font-size:16px"></div><div class="tv-card hidden" style="width:36px;height:50px;font-size:16px"></div>' : ''}
+                <div style="display:flex;gap:2px;margin-top:2px;justify-content:center">
+                  ${!isFolded ? '<div class="tv-card hidden" style="width:28px;height:40px;font-size:14px"></div><div class="tv-card hidden" style="width:28px;height:40px;font-size:14px"></div>' : ''}
                 </div>
               `}
             </div>
@@ -417,9 +531,21 @@ function renderTVPoker(state) {
 
 // ── TV HORSE RACING ─────────────────────────────────────────────────────
 
+let lastRacePhase = null;
+
 function renderTVHorseRacing(state) {
   const el = document.getElementById('tvHorseracingContent');
   const horses = state.horses || [];
+
+  if (state.phase !== lastRacePhase) {
+    if (state.phase === 'racing') CasinoAudio.gallop();
+    if (state.phase === 'result') {
+      CasinoAudio.raceFinish();
+      const anyWin = Object.values(state.bets || {}).some(b => b.won);
+      setTimeout(() => { if (anyWin) CasinoAudio.bigWin(); }, 500);
+    }
+    lastRacePhase = state.phase;
+  }
 
   el.innerHTML = `
     ${state.phase === 'betting' ? `
@@ -447,7 +573,7 @@ function renderTVHorseRacing(state) {
       <div class="tv-race-result" style="color:${horses.find(h=>h.id===state.winner)?.color || 'var(--gold)'}">
         🏆 ${horses.find(h=>h.id===state.winner)?.name} WINS! 🏆
       </div>
-      <div class="tv-bets-list" style="margin-top:16px;justify-content:center">
+      <div class="tv-bets-list" style="margin-top:6px;justify-content:center">
         ${Object.entries(state.bets || {}).map(([pid, bet]) => {
           const p = players.find(pl => pl.id === pid);
           return `
@@ -461,7 +587,7 @@ function renderTVHorseRacing(state) {
         }).join('')}
       </div>
     ` : state.phase === 'racing' ? `
-      <div style="text-align:center;font-size:28px;color:var(--gold);margin-top:16px;font-weight:800">
+      <div style="text-align:center;font-size:22px;color:var(--gold);margin-top:6px;font-weight:800">
         AND THEY'RE OFF! 🏁
       </div>
     ` : ''}

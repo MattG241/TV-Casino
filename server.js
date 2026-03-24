@@ -157,7 +157,9 @@ const games = {
       broadcastToRoom(room, 'players:update', playerList(room));
     },
     spin(room) {
+      if (room.gameState.phase === 'spinning') return; // prevent double-spin
       room.gameState.phase = 'spinning';
+      room.gameState.timer = null; // clear timer display
       const number = Math.floor(Math.random() * 37); // 0-36
       const RED = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
       const color = number === 0 ? 'green' : RED.includes(number) ? 'red' : 'black';
@@ -165,6 +167,7 @@ const games = {
       broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
 
       setTimeout(() => {
+        if (room.gameState.phase !== 'spinning') return; // already moved on
         room.gameState.phase = 'result';
         // Calculate winnings
         for (const [pid, bets] of Object.entries(room.gameState.bets)) {
@@ -712,6 +715,8 @@ function broadcastPlayerHands(room) {
 }
 
 function startBettingTimer(room, seconds) {
+  // Clear any existing timer
+  if (room._timerInterval) clearInterval(room._timerInterval);
   let timer = seconds;
   const interval = setInterval(() => {
     timer--;
@@ -719,6 +724,7 @@ function startBettingTimer(room, seconds) {
     broadcastToRoom(room, 'game:timer', { timer });
     if (timer <= 0) {
       clearInterval(interval);
+      room._timerInterval = null;
       if (room.currentGame === 'roulette') games.roulette.spin(room);
       else if (room.currentGame === 'horseracing') games.horseracing.race(room);
     }

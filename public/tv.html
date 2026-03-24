@@ -7,10 +7,23 @@
   <link rel="stylesheet" href="/css/tv.css">
 </head>
 <body>
+  <!-- Fullscreen prompt overlay -->
+  <div class="fullscreen-prompt" id="fullscreenPrompt">
+    <div class="fullscreen-prompt-content">
+      <div class="fullscreen-icon">🖥️</div>
+      <h2>TV CASINO</h2>
+      <p>Tap anywhere to go fullscreen</p>
+      <div class="fullscreen-hint">Double-click anytime to toggle fullscreen</div>
+    </div>
+  </div>
+
   <div class="tv-container">
     <div class="tv-header">
       <div class="tv-logo">TV CASINO</div>
-      <div class="tv-room-code" id="tvRoomCode">----</div>
+      <div class="tv-header-right">
+        <div class="tv-room-code" id="tvRoomCode">----</div>
+        <button class="tv-sound-toggle" id="soundToggle" title="Toggle Sound">🔊</button>
+      </div>
     </div>
 
     <div class="tv-players" id="tvPlayers"></div>
@@ -57,6 +70,7 @@
   <div class="confetti-container" id="confetti"></div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/tv-audio.js"></script>
   <script src="/js/tv.js"></script>
 </body>
 </html>
