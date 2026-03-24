@@ -481,7 +481,7 @@ const games = {
           broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(gs, true) });
           setTimeout(dealerDraw, 1000);
         } else {
-          this.resolve(room);
+          games.blackjack.resolve(room);
         }
       };
       setTimeout(dealerDraw, 1000);
@@ -866,7 +866,7 @@ const games = {
               gs.commentary = "AND THEY'RE OFF!";
               gs.speak = "And they're off! The field breaks cleanly from the barriers!";
               broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
-              this._startRace(room, gs);
+              games.horseracing._startRace(room, gs);
             }, 2000);
           }, 1500);
         }
@@ -927,7 +927,7 @@ const games = {
         const avgPos = gs.horses.reduce((s, h) => s + h.position, 0) / gs.horses.length;
         if (tickCount % 15 === 10 && !gs.speak) {
           const leader = gs.horses.find(h => h.id === leaderId);
-          const lines = this._getCommentary(avgPos, leader, gap, gs.horses);
+          const lines = games.horseracing._getCommentary(avgPos, leader, gap, gs.horses);
           gs.commentary = lines.text;
           if (lines.speak) gs.speak = lines.speak;
         } else if (tickCount % 5 === 0) {
