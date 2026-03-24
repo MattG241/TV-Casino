@@ -5,6 +5,7 @@ const Race3D = (() => {
   let horses3d = [];
   let container = null;
   let initialized = false;
+  let frameCount = 0;
 
   // Track dimensions
   const STRAIGHT = 70;
@@ -28,24 +29,20 @@ const Race3D = (() => {
       let x, z, tx, tz;
 
       if (d < STRAIGHT) {
-        // Bottom straight (left to right)
         x = -STRAIGHT / 2 + d;
         z = RADIUS;
         tx = 1; tz = 0;
       } else if (d < STRAIGHT + Math.PI * RADIUS) {
-        // Right turn
         const angle = (d - STRAIGHT) / RADIUS - Math.PI / 2;
         x = STRAIGHT / 2 + Math.cos(angle) * RADIUS;
         z = Math.sin(angle) * RADIUS;
         tx = -Math.sin(angle); tz = Math.cos(angle);
       } else if (d < 2 * STRAIGHT + Math.PI * RADIUS) {
-        // Top straight (right to left)
         const along = d - STRAIGHT - Math.PI * RADIUS;
         x = STRAIGHT / 2 - along;
         z = -RADIUS;
         tx = -1; tz = 0;
       } else {
-        // Left turn
         const angle = (d - 2 * STRAIGHT - Math.PI * RADIUS) / RADIUS + Math.PI / 2;
         x = -STRAIGHT / 2 + Math.cos(angle) * RADIUS;
         z = Math.sin(angle) * RADIUS;
@@ -63,7 +60,6 @@ const Race3D = (() => {
     const safeIdx = Math.max(0, Math.min(TRACK_SEGMENTS, idx));
     const pt = trackPoints[safeIdx];
     const tan = trackTangents[safeIdx];
-    // Normal = perpendicular to tangent
     return {
       x: pt.x + (-tan.z) * laneOffset,
       z: pt.z + tan.x * laneOffset,
@@ -81,7 +77,7 @@ const Race3D = (() => {
     buildTrack();
 
     scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x99bbdd, 0.0025);
+    scene.fog = new THREE.FogExp2(0x99bbdd, 0.002);
 
     camera = new THREE.PerspectiveCamera(45, w / h, 0.5, 600);
     camera.position.set(0, 50, 80);
@@ -148,7 +144,6 @@ const Race3D = (() => {
     post.position.set(fp.x, 3.5, fp.z);
     scene.add(post);
 
-    // Checkered finish squares on ground
     for (let j = 0; j < 8; j++) {
       const lanePos = -TRACK_W / 2 + (j + 0.5) * (TRACK_W / 8);
       const p = getTrackPos(0, lanePos);
@@ -184,6 +179,7 @@ const Race3D = (() => {
     scene.add(gateGroup);
 
     initialized = true;
+    frameCount = 0;
   }
 
   function addRail(laneOffset) {
@@ -206,37 +202,179 @@ const Race3D = (() => {
     }
   }
 
+  // ── Build a more realistic horse model ─────────────────────────────────
   function createHorse(color, laneIndex, totalLanes) {
     const group = new THREE.Group();
     const col = new THREE.Color(color);
     const bodyMat = new THREE.MeshLambertMaterial({ color: col });
-    const legMat = new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.6) });
+    const darkMat = new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.5) });
+    const skinMat = new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.7) });
 
-    // Body
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1, 0.7), bodyMat);
-    body.position.y = 1.6; body.castShadow = true;
-    group.add(body);
+    // === TORSO — elongated barrel shape ===
+    const torso = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 12, 10),
+      bodyMat
+    );
+    torso.scale.set(1.6, 0.7, 0.55);
+    torso.position.set(0, 1.65, 0);
+    torso.castShadow = true;
+    group.add(torso);
 
-    // Neck + head
-    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.4), bodyMat);
-    neck.position.set(1.4, 2.2, 0); neck.rotation.z = -0.5;
+    // === HINDQUARTERS — larger sphere at back ===
+    const hind = new THREE.Mesh(
+      new THREE.SphereGeometry(0.7, 10, 8),
+      bodyMat
+    );
+    hind.scale.set(1.0, 0.9, 0.8);
+    hind.position.set(-1.1, 1.6, 0);
+    hind.castShadow = true;
+    group.add(hind);
+
+    // === CHEST — sphere at front ===
+    const chest = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 10, 8),
+      bodyMat
+    );
+    chest.scale.set(0.8, 1.0, 0.8);
+    chest.position.set(1.1, 1.7, 0);
+    chest.castShadow = true;
+    group.add(chest);
+
+    // === NECK — angled cylinder ===
+    const neck = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.35, 1.2, 8),
+      bodyMat
+    );
+    neck.position.set(1.5, 2.3, 0);
+    neck.rotation.z = -0.6;
+    neck.castShadow = true;
     group.add(neck);
 
-    // Legs
-    const legs = [];
-    [[-0.6, 0.25], [-0.6, -0.25], [0.6, 0.25], [0.6, -0.25]].forEach(([x, z]) => {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 1.3), legMat);
-      leg.position.set(x, 0.75, z); leg.castShadow = true;
-      group.add(leg); legs.push(leg);
+    // === HEAD — elongated shape ===
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.25, 8, 8),
+      bodyMat
+    );
+    head.scale.set(1.8, 0.9, 0.8);
+    head.position.set(2.1, 2.8, 0);
+    head.castShadow = true;
+    group.add(head);
+
+    // === SNOUT / MUZZLE ===
+    const snout = new THREE.Mesh(
+      new THREE.SphereGeometry(0.15, 6, 6),
+      skinMat
+    );
+    snout.scale.set(1.4, 0.7, 0.8);
+    snout.position.set(2.5, 2.7, 0);
+    group.add(snout);
+
+    // === EARS — two small cones ===
+    [-0.1, 0.1].forEach(zOff => {
+      const ear = new THREE.Mesh(
+        new THREE.ConeGeometry(0.06, 0.22, 4),
+        darkMat
+      );
+      ear.position.set(2.0, 3.1, zOff);
+      ear.rotation.z = -0.3;
+      group.add(ear);
     });
 
-    // Jockey
-    const jockey = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22),
-      new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(1.5) })
+    // === MANE — ridge along neck ===
+    for (let i = 0; i < 5; i++) {
+      const tuft = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.2, 0.04),
+        darkMat
+      );
+      const t = i / 4;
+      tuft.position.set(1.2 + t * 0.7, 2.55 + t * 0.35, 0);
+      tuft.rotation.z = -0.5;
+      group.add(tuft);
+    }
+
+    // === TAIL — curved segments ===
+    const tailGroup = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+      const seg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04 - i * 0.008, 0.04 - (i + 1) * 0.005, 0.4, 4),
+        darkMat
+      );
+      seg.position.set(-1.6 - i * 0.2, 1.9 - i * 0.25, 0);
+      seg.rotation.z = 0.4 + i * 0.2;
+      tailGroup.add(seg);
+    }
+    group.add(tailGroup);
+    group._tail = tailGroup;
+
+    // === LEGS — upper + lower segments with joints ===
+    const legs = [];
+    const legPositions = [
+      { x: 0.7, z: 0.25, front: true },   // front left
+      { x: 0.7, z: -0.25, front: true },  // front right
+      { x: -0.8, z: 0.25, front: false },  // back left
+      { x: -0.8, z: -0.25, front: false }, // back right
+    ];
+
+    legPositions.forEach(lp => {
+      const legGroup = new THREE.Group();
+      legGroup.position.set(lp.x, 1.1, lp.z);
+
+      // Upper leg
+      const upper = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.09, 0.07, 0.7, 6),
+        bodyMat
+      );
+      upper.position.y = -0.15;
+      upper.castShadow = true;
+      legGroup.add(upper);
+
+      // Lower leg (thinner)
+      const lower = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.04, 0.7, 6),
+        skinMat
+      );
+      lower.position.y = -0.7;
+      lower.castShadow = true;
+      legGroup.add(lower);
+
+      // Hoof
+      const hoof = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.07, 0.1, 6),
+        new THREE.MeshLambertMaterial({ color: 0x222222 })
+      );
+      hoof.position.y = -1.05;
+      legGroup.add(hoof);
+
+      legGroup._isFront = lp.front;
+      group.add(legGroup);
+      legs.push(legGroup);
+    });
+
+    // === JOCKEY — body + head ===
+    const jockeyCol = new THREE.Color(color).offsetHSL(0.15, 0.2, 0.1);
+    const jockeyBody = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 8, 6),
+      new THREE.MeshLambertMaterial({ color: jockeyCol })
     );
-    jockey.position.set(0, 2.3, 0);
-    group.add(jockey);
+    jockeyBody.scale.set(0.8, 1.2, 0.7);
+    jockeyBody.position.set(-0.1, 2.35, 0);
+    group.add(jockeyBody);
+
+    const jockeyHead = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 6, 6),
+      new THREE.MeshLambertMaterial({ color: 0xf5c9a0 })
+    );
+    jockeyHead.position.set(0.0, 2.65, 0);
+    group.add(jockeyHead);
+
+    // Jockey helmet
+    const helmet = new THREE.Mesh(
+      new THREE.SphereGeometry(0.13, 6, 6),
+      new THREE.MeshLambertMaterial({ color: jockeyCol })
+    );
+    helmet.scale.set(1, 0.7, 1);
+    helmet.position.set(0.0, 2.73, 0);
+    group.add(helmet);
 
     // Lane position across track width
     const laneW = TRACK_W - 4;
@@ -244,17 +382,84 @@ const Race3D = (() => {
     group._legs = legs;
     group._gallopPhase = Math.random() * Math.PI * 2;
     group._trackT = 0.96;
+    group._paradeT = 0.90 + (laneIndex * 0.008); // Spread horses along parade path
     scene.add(group);
     return group;
   }
 
+  // ── Walk animation (slow gentle gait for parading) ─────────────────────
+  function animateWalk(h3d, speed) {
+    h3d._gallopPhase += speed;
+    const gp = h3d._gallopPhase;
+    // Gentle bob
+    h3d.position.y = Math.abs(Math.sin(gp * 2)) * 0.03;
+    h3d._legs.forEach(leg => {
+      const off = leg._isFront ? 0 : Math.PI;
+      leg.rotation.x = Math.sin(gp + off) * 0.2;
+    });
+    // Gentle tail sway
+    if (h3d._tail) {
+      h3d._tail.rotation.z = Math.sin(gp * 0.5) * 0.1;
+    }
+  }
+
+  // ── Gallop animation (full racing speed) ───────────────────────────────
+  function animateGallop(h3d) {
+    h3d._gallopPhase += 0.3;
+    const gp = h3d._gallopPhase;
+    // Stronger vertical bob
+    h3d.position.y = Math.abs(Math.sin(gp * 2)) * 0.15;
+    // Legs: front pair and back pair alternate
+    h3d._legs.forEach(leg => {
+      const off = leg._isFront ? 0 : Math.PI;
+      leg.rotation.x = Math.sin(gp + off) * 0.55;
+    });
+    // Tail streams back
+    if (h3d._tail) {
+      h3d._tail.rotation.x = -0.2 + Math.sin(gp * 0.7) * 0.05;
+      h3d._tail.rotation.z = Math.sin(gp * 0.3) * 0.05;
+    }
+  }
+
+  // ── Reset pose (standing still) ────────────────────────────────────────
+  function resetPose(h3d) {
+    h3d.position.y = 0;
+    h3d._legs.forEach(leg => { leg.rotation.x = 0; });
+    if (h3d._tail) {
+      h3d._tail.rotation.x = 0;
+      h3d._tail.rotation.z = 0;
+    }
+  }
+
+  // ── Place horse on track at normalized t ───────────────────────────────
+  function placeOnTrack(h3d, tRaw) {
+    const tNorm = ((tRaw % 1) + 1) % 1;
+    const p = getTrackPos(tNorm, h3d._laneOffset);
+    const nextT = ((tNorm + 0.003) % 1 + 1) % 1;
+    const pNext = getTrackPos(nextT, h3d._laneOffset);
+
+    h3d.position.x = p.x;
+    h3d.position.z = p.z;
+
+    // Face direction of travel
+    const dx = pNext.x - p.x;
+    const dz = pNext.z - p.z;
+    if (dx !== 0 || dz !== 0) {
+      h3d.rotation.y = Math.atan2(dx, dz);
+    }
+  }
+
   function updateHorses(horsesData, phase) {
+    if (!scene) return;
+    frameCount++;
+
     while (horses3d.length < horsesData.length) {
       const i = horses3d.length;
       horses3d.push(createHorse(horsesData[i].color, i, horsesData.length));
     }
     while (horses3d.length > horsesData.length) {
-      scene.remove(horses3d.pop());
+      const rem = horses3d.pop();
+      scene.remove(rem);
     }
 
     const isRacing = phase === 'racing';
@@ -264,57 +469,87 @@ const Race3D = (() => {
     horsesData.forEach((hd, i) => {
       const h3d = horses3d[i];
       if (hd.scratched) { h3d.visible = false; return; }
+      h3d.visible = true;
 
-      // Map position 0-100 to track t: 0.96 → 0.96+1 (full lap)
+      // ── BETTING: horse parade — walk single-file along the track ──
+      if (phase === 'betting') {
+        // Each horse slowly walks forward
+        h3d._paradeT += 0.00012;
+        placeOnTrack(h3d, h3d._paradeT);
+        animateWalk(h3d, 0.06);
+        return;
+      }
+
+      // ── LOADING: horses walk up to gate, then stand ──
+      if (phase === 'loading') {
+        if (hd.gateLoaded) {
+          // Standing in gate
+          h3d._trackT = 0.96;
+          placeOnTrack(h3d, 0.96);
+          resetPose(h3d);
+        } else {
+          // Not yet loaded — still approaching
+          h3d.visible = false;
+        }
+        return;
+      }
+
+      // ── STARTING: all in gate, standing ──
+      if (phase === 'starting') {
+        h3d._trackT = 0.96;
+        placeOnTrack(h3d, 0.96);
+        resetPose(h3d);
+        return;
+      }
+
+      // ── RACING / RESULT: gallop forward ──
       const pos = hd.position || 0;
       const targetT = 0.96 + (pos / 100);
-
-      if (phase === 'loading' || phase === 'starting') {
-        h3d._trackT = 0.96;
-        h3d.visible = phase === 'starting' || !!hd.gateLoaded;
-      } else {
-        // Smooth interpolation
-        h3d._trackT += (targetT - h3d._trackT) * 0.2;
-        h3d.visible = true;
-      }
+      // Smooth interpolation toward target
+      h3d._trackT += (targetT - h3d._trackT) * 0.15;
 
       if (h3d._trackT > leadT) { leadT = h3d._trackT; leadIdx = i; }
 
-      // Position on track
-      const tNorm = ((h3d._trackT % 1) + 1) % 1;
-      const p = getTrackPos(tNorm, h3d._laneOffset);
-      const nextT = ((tNorm + 0.003) % 1 + 1) % 1;
-      const pNext = getTrackPos(nextT, h3d._laneOffset);
+      placeOnTrack(h3d, h3d._trackT);
 
-      h3d.position.x = p.x;
-      h3d.position.z = p.z;
-
-      // Face direction of travel
-      const dx = pNext.x - p.x;
-      const dz = pNext.z - p.z;
-      if (dx !== 0 || dz !== 0) {
-        h3d.rotation.y = Math.atan2(dx, dz);
-      }
-
-      // Gallop animation
       if (isRacing) {
-        h3d._gallopPhase += 0.3;
-        const gp = h3d._gallopPhase;
-        h3d.position.y = Math.abs(Math.sin(gp * 2)) * 0.1;
-        h3d._legs.forEach((leg, li) => {
-          const off = li < 2 ? 0 : Math.PI;
-          leg.rotation.x = Math.sin(gp + off) * 0.45;
-        });
+        animateGallop(h3d);
       } else {
-        h3d.position.y = 0;
+        // Result phase — slow down
+        animateWalk(h3d, 0.08);
       }
     });
 
-    // Camera
-    if (isRacing || phase === 'result') {
+    // ──────── CAMERA ────────
+    if (phase === 'betting') {
+      // Follow the parade from outside the rail, tracking the middle horse
+      const midIdx = Math.floor(horsesData.length / 2);
+      const midH = horses3d[midIdx];
+      if (midH) {
+        const tNorm = ((midH._paradeT % 1) + 1) % 1;
+        // Camera slightly behind, outside the rail
+        const behindT = ((tNorm - 0.03) % 1 + 1) % 1;
+        const camPos = getTrackPos(behindT, TRACK_W / 2 + 8);
+        const lookPos = getTrackPos(((tNorm + 0.01) % 1 + 1) % 1, 0);
+
+        camera.position.x += (camPos.x - camera.position.x) * 0.03;
+        camera.position.z += (camPos.z - camera.position.z) * 0.03;
+        camera.position.y += (6 - camera.position.y) * 0.03;
+        camera.lookAt(lookPos.x, 1.5, lookPos.z);
+      }
+    } else if (phase === 'loading' || phase === 'starting') {
+      // Camera looking at the gate FROM THE FRONT (where horses will run toward)
+      // Position ahead of the gate on the track, looking back at it
+      const aheadT = ((0.96 + 0.04) % 1 + 1) % 1; // slightly ahead on track
+      const camPos = getTrackPos(aheadT, 3);
+      camera.position.x += (camPos.x - camera.position.x) * 0.05;
+      camera.position.z += (camPos.z - camera.position.z) * 0.05;
+      camera.position.y += (5 - camera.position.y) * 0.05;
+      const gateCenter = getTrackPos(0.96, 0);
+      camera.lookAt(gateCenter.x, 1.8, gateCenter.z);
+    } else if (isRacing || phase === 'result') {
       const leadH = horses3d[leadIdx];
       if (leadH) {
-        // Camera behind and to the side of the leader
         const tNorm = ((leadH._trackT % 1) + 1) % 1;
         const behindT = ((tNorm - 0.06) % 1 + 1) % 1;
         const camPos = getTrackPos(behindT, TRACK_W + 12);
@@ -325,12 +560,6 @@ const Race3D = (() => {
         camera.position.y += (15 - camera.position.y) * 0.05;
         camera.lookAt(lookPos.x, 1, lookPos.z);
       }
-    } else {
-      // Gate view
-      const gp = getTrackPos(0.96, TRACK_W / 2 + 12);
-      const gl = getTrackPos(0.96, 0);
-      camera.position.set(gp.x, 8, gp.z);
-      camera.lookAt(gl.x, 1.5, gl.z);
     }
 
     // Gate visibility
@@ -355,6 +584,7 @@ const Race3D = (() => {
     scene = null; camera = null; renderer = null;
     trackPoints = []; trackTangents = [];
     initialized = false;
+    frameCount = 0;
   }
 
   function resize() {
