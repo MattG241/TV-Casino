@@ -4,6 +4,10 @@ const https = require('https');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 
+// Prevent crashes from unhandled errors
+process.on('uncaughtException', (err) => console.error('Uncaught:', err.message));
+process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
@@ -48,8 +52,10 @@ function getRoom(code) {
 }
 
 function broadcastToRoom(room, event, data) {
-  room.players.forEach(p => p.socket.emit(event, data));
-  if (room.tvSocket) room.tvSocket.emit(event, data);
+  room.players.forEach(p => {
+    try { if (p.socket && p.socket.connected) p.socket.emit(event, data); } catch (e) {}
+  });
+  try { if (room.tvSocket && room.tvSocket.connected) room.tvSocket.emit(event, data); } catch (e) {}
 }
 
 function playerList(room) {
@@ -1365,31 +1371,35 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     if (!currentRoom) return;
+    const room = currentRoom; // capture reference
+    const pid = playerId;
 
     // TV socket — remove immediately
-    if (currentRoom.tvSocket === socket) {
-      currentRoom.tvSocket = null;
+    if (room.tvSocket === socket) {
+      room.tvSocket = null;
     }
 
     // Player — keep slot for 2 minutes to allow rejoin (phone sleep/tab switch)
-    const player = currentRoom.players.find(p => p.id === playerId);
+    const player = room.players.find(p => p.id === pid);
     if (player) {
       player._disconnectTimer = setTimeout(() => {
-        currentRoom.players = currentRoom.players.filter(p => p.id !== playerId);
-        if (currentRoom.readyPlayers) currentRoom.readyPlayers.delete(playerId);
-        if (currentRoom.votes) delete currentRoom.votes[playerId];
-        if (currentRoom.players.length === 0 && !currentRoom.tvSocket) {
-          if (currentRoom._timerInterval) clearInterval(currentRoom._timerInterval);
-          if (currentRoom._voteTimerInterval) clearInterval(currentRoom._voteTimerInterval);
-          if (currentRoom._raceInterval) clearInterval(currentRoom._raceInterval);
-          if (currentRoom._oddsInterval) clearInterval(currentRoom._oddsInterval);
-          clearTimeout(currentRoom._betBroadcastTimeout);
-          rooms.delete(currentRoom.code);
+        // Room may have been deleted already
+        if (!rooms.has(room.code)) return;
+        room.players = room.players.filter(p => p.id !== pid);
+        if (room.readyPlayers) room.readyPlayers.delete(pid);
+        if (room.votes) delete room.votes[pid];
+        if (room.players.length === 0 && !room.tvSocket) {
+          if (room._timerInterval) clearInterval(room._timerInterval);
+          if (room._voteTimerInterval) clearInterval(room._voteTimerInterval);
+          if (room._raceInterval) clearInterval(room._raceInterval);
+          if (room._oddsInterval) clearInterval(room._oddsInterval);
+          clearTimeout(room._betBroadcastTimeout);
+          rooms.delete(room.code);
         } else {
-          if (currentRoom.hostId === playerId && currentRoom.players.length > 0) {
-            currentRoom.hostId = currentRoom.players[0].id;
+          if (room.hostId === pid && room.players.length > 0) {
+            room.hostId = room.players[0].id;
           }
-          broadcastToRoom(currentRoom, 'players:update', playerList(currentRoom));
+          broadcastToRoom(room, 'players:update', playerList(room));
         }
       }, 120000); // 2 minute grace period
     }
