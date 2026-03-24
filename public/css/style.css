@@ -851,6 +851,94 @@ body {
   pointer-events: none;
 }
 
+/* ── Lobby Waiting ─────────────────────────────────────────────────────── */
+.lobby-waiting-msg {
+  text-align: center;
+  font-size: 16px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+}
+
+.btn-everyones-in {
+  font-size: 20px;
+  padding: 20px;
+  animation: glow 2s ease infinite;
+}
+
+.lobby-player-count {
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-top: 12px;
+}
+
+/* ── Vote Screen ──────────────────────────────────────────────────────── */
+.vote-header {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--gold);
+  margin-bottom: 12px;
+}
+
+.vote-timer-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.vote-timer-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--gold), var(--red));
+  transition: width 1s linear;
+  border-radius: 3px;
+  width: 100%;
+}
+
+.vote-timer-text {
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+.vote-card {
+  position: relative;
+}
+
+.vote-card.voted {
+  border-color: var(--gold);
+  box-shadow: 0 0 20px rgba(255,215,0,0.3);
+}
+
+.vote-card.winner {
+  border-color: var(--green);
+  box-shadow: 0 0 20px rgba(0,200,83,0.4);
+  animation: pulse 0.5s ease 3;
+}
+
+.vote-count {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--gold);
+  color: #000;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* ── Game Views ───────────────────────────────────────────────────────── */
+.game-view { display: none; }
+.game-view.active { display: block; animation: fadeIn 0.4s ease; }
+
 /* ── Responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 360px) {
   .game-grid { grid-template-columns: 1fr; }

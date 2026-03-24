@@ -26,80 +26,91 @@
       </div>
     </div>
 
-    <div class="tv-players" id="tvPlayers"></div>
-
     <div class="tv-game-area">
-      <!-- Waiting Screen (with QR code) -->
+      <!-- Waiting Screen (QR code + floating players) -->
       <div class="tv-screen active" id="tvWaiting">
-        <div class="tv-waiting">
-          <h2>Scan to Join</h2>
-          <div class="tv-join-layout">
-            <div class="tv-qr-section">
-              <canvas id="qrCanvas" width="200" height="200"></canvas>
-              <div class="tv-join-url" id="tvJoinUrl"></div>
-            </div>
-            <div class="tv-join-info">
-              <div class="tv-join-step">1. Scan QR code or visit the URL</div>
-              <div class="tv-join-step">2. Enter your name</div>
-              <div class="tv-join-step">3. Room code: <strong id="tvJoinCode">----</strong></div>
-              <div class="tv-players-waiting" id="tvPlayersWaiting">Waiting for players...</div>
-            </div>
+        <div class="tv-waiting-layout">
+          <div class="tv-join-panel">
+            <h2>Scan to Join</h2>
+            <canvas id="qrCanvas" width="180" height="180"></canvas>
+            <div class="tv-join-url" id="tvJoinUrl"></div>
+            <div class="tv-join-code">Room: <strong id="tvJoinCode">----</strong></div>
+          </div>
+          <div class="tv-floating-area" id="tvFloatingArea">
+            <!-- Floating player avatars appear here -->
+            <div class="tv-waiting-text" id="tvWaitingText">Waiting for players...</div>
           </div>
         </div>
       </div>
 
-      <!-- Game Selection (TV is host) -->
-      <div class="tv-screen" id="tvGameSelect">
-        <div class="tv-game-select">
-          <h2>Choose a Game</h2>
-          <div class="tv-game-grid">
-            <div class="tv-game-card" onclick="selectGame('roulette')">
-              <div class="tv-game-icon">🎰</div>
-              <div class="tv-game-name">Roulette</div>
+      <!-- Voting Screen -->
+      <div class="tv-screen" id="tvVoting">
+        <div class="tv-voting">
+          <h2>Vote for a Game!</h2>
+          <div class="tv-vote-timer" id="tvVoteTimer"></div>
+          <div class="tv-vote-grid" id="tvVoteGrid">
+            <div class="tv-vote-card" data-game="roulette">
+              <div class="tv-vote-icon">🎰</div>
+              <div class="tv-vote-name">Roulette</div>
+              <div class="tv-vote-bar"><div class="tv-vote-fill" id="tvVoteFill-roulette"></div></div>
+              <div class="tv-vote-count" id="tvVoteCount-roulette">0</div>
             </div>
-            <div class="tv-game-card" onclick="selectGame('slots')">
-              <div class="tv-game-icon">🍒</div>
-              <div class="tv-game-name">Slots</div>
+            <div class="tv-vote-card" data-game="slots">
+              <div class="tv-vote-icon">🍒</div>
+              <div class="tv-vote-name">Slots</div>
+              <div class="tv-vote-bar"><div class="tv-vote-fill" id="tvVoteFill-slots"></div></div>
+              <div class="tv-vote-count" id="tvVoteCount-slots">0</div>
             </div>
-            <div class="tv-game-card" onclick="selectGame('blackjack')">
-              <div class="tv-game-icon">🃏</div>
-              <div class="tv-game-name">Blackjack</div>
+            <div class="tv-vote-card" data-game="blackjack">
+              <div class="tv-vote-icon">🃏</div>
+              <div class="tv-vote-name">Blackjack</div>
+              <div class="tv-vote-bar"><div class="tv-vote-fill" id="tvVoteFill-blackjack"></div></div>
+              <div class="tv-vote-count" id="tvVoteCount-blackjack">0</div>
             </div>
-            <div class="tv-game-card" onclick="selectGame('poker')">
-              <div class="tv-game-icon">♠️</div>
-              <div class="tv-game-name">Poker</div>
+            <div class="tv-vote-card" data-game="poker">
+              <div class="tv-vote-icon">♠️</div>
+              <div class="tv-vote-name">Poker</div>
+              <div class="tv-vote-bar"><div class="tv-vote-fill" id="tvVoteFill-poker"></div></div>
+              <div class="tv-vote-count" id="tvVoteCount-poker">0</div>
             </div>
-            <div class="tv-game-card" onclick="selectGame('horseracing')">
-              <div class="tv-game-icon">🏇</div>
-              <div class="tv-game-name">Horses</div>
+            <div class="tv-vote-card" data-game="horseracing">
+              <div class="tv-vote-icon">🏇</div>
+              <div class="tv-vote-name">Horses</div>
+              <div class="tv-vote-bar"><div class="tv-vote-fill" id="tvVoteFill-horseracing"></div></div>
+              <div class="tv-vote-count" id="tvVoteCount-horseracing">0</div>
             </div>
           </div>
-          <div class="tv-game-select-hint">Select a game using mouse, remote, or keyboard (1-5)</div>
+          <div class="tv-voters" id="tvVoters"></div>
         </div>
       </div>
 
       <!-- Roulette TV -->
       <div class="tv-screen" id="tvRoulette">
+        <div class="tv-players" id="tvPlayersRoulette"></div>
         <div class="tv-roulette" id="tvRouletteContent"></div>
       </div>
 
       <!-- Slots TV -->
       <div class="tv-screen" id="tvSlots">
+        <div class="tv-players" id="tvPlayersSlots"></div>
         <div class="tv-slots" id="tvSlotsContent"></div>
       </div>
 
       <!-- Blackjack TV -->
       <div class="tv-screen" id="tvBlackjack">
+        <div class="tv-players" id="tvPlayersBlackjack"></div>
         <div class="tv-blackjack" id="tvBlackjackContent"></div>
       </div>
 
       <!-- Poker TV -->
       <div class="tv-screen" id="tvPoker">
+        <div class="tv-players" id="tvPlayersPoker"></div>
         <div class="tv-poker" id="tvPokerContent"></div>
       </div>
 
       <!-- Horse Racing TV -->
       <div class="tv-screen" id="tvHorseracing">
+        <div class="tv-players" id="tvPlayersHorseracing"></div>
         <div class="tv-horseracing" id="tvHorseracingContent"></div>
       </div>
     </div>

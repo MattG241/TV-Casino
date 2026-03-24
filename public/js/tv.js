@@ -14,7 +14,8 @@ let roomCode = '';
 let players = [];
 let currentGame = null;
 let lastRoulettePhase = null;
-let isTVHost = false;
+let floatingPositions = {};
+let floatAnimFrameId = null;
 
 // ── Fullscreen Management ────────────────────────────────────────────────
 
@@ -39,7 +40,6 @@ function toggleFullscreen() {
   }
 }
 
-// Fullscreen prompt - click to enter fullscreen and dismiss
 const fsPrompt = document.getElementById('fullscreenPrompt');
 if (fsPrompt) {
   fsPrompt.addEventListener('click', () => {
@@ -49,14 +49,11 @@ if (fsPrompt) {
   });
 }
 
-// Double-click anywhere to toggle fullscreen
 document.addEventListener('dblclick', (e) => {
   if (e.target.closest('.tv-sound-toggle')) return;
-  if (e.target.closest('.tv-game-card')) return;
   toggleFullscreen();
 });
 
-// Sound toggle button
 const soundBtn = document.getElementById('soundToggle');
 if (soundBtn) {
   soundBtn.addEventListener('click', () => {
@@ -69,80 +66,134 @@ if (soundBtn) {
 // ── Init: TV creates the room ───────────────────────────────────────────
 
 function init() {
-  // TV always creates a room on load
   socket.emit('tv:create');
 }
 
 function getBaseUrl() {
-  const proto = window.location.protocol;
-  const host = window.location.host;
-  return `${proto}//${host}`;
+  return `${window.location.protocol}//${window.location.host}`;
 }
 
 function showJoinInfo() {
   const baseUrl = getBaseUrl();
   const joinUrl = `${baseUrl}/?room=${roomCode}`;
 
-  // Update room code displays
   document.getElementById('tvRoomCode').textContent = roomCode;
   const joinCodeEl = document.getElementById('tvJoinCode');
   if (joinCodeEl) joinCodeEl.textContent = roomCode;
 
-  // Update join URL text
   const urlEl = document.getElementById('tvJoinUrl');
   if (urlEl) urlEl.textContent = joinUrl;
 
-  // Render QR code
   const canvas = document.getElementById('qrCanvas');
   if (canvas && typeof QRCode !== 'undefined') {
     QRCode.render(canvas, joinUrl);
   }
 }
 
-// Game selection from TV (keyboard 1-5 or click)
-function selectGame(game) {
-  if (!isTVHost) return;
-  socket.emit('tv:select-game', { game });
-}
-
-// Keyboard shortcuts for game selection
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'F11') { e.preventDefault(); toggleFullscreen(); return; }
-
-  // Game selection shortcuts when on game select screen
-  const gameSelectEl = document.getElementById('tvGameSelect');
-  if (gameSelectEl && gameSelectEl.classList.contains('active')) {
-    const games = ['roulette', 'slots', 'blackjack', 'poker', 'horseracing'];
-    const num = parseInt(e.key);
-    if (num >= 1 && num <= 5) selectGame(games[num - 1]);
-  }
-
-  // Escape to go back to game selection
-  if (e.key === 'Escape' && currentGame) {
-    backToGameSelect();
-  }
+  if (e.key === 'F11') { e.preventDefault(); toggleFullscreen(); }
 });
-
-function backToGameSelect() {
-  if (!isTVHost) return;
-  currentGame = null;
-  showTVScreen('tvGameSelect');
-}
 
 init();
 
+// ── Floating Players ────────────────────────────────────────────────────
+
+function updateFloatingPlayers() {
+  const area = document.getElementById('tvFloatingArea');
+  if (!area) return;
+
+  const waitText = document.getElementById('tvWaitingText');
+  if (waitText) {
+    waitText.textContent = players.length > 0
+      ? `${players.length} player${players.length !== 1 ? 's' : ''} joined`
+      : 'Waiting for players...';
+  }
+
+  // Remove players that left
+  area.querySelectorAll('.tv-floating-player').forEach(el => {
+    const pid = el.dataset.pid;
+    if (!players.find(p => p.id === pid)) {
+      el.remove();
+      delete floatingPositions[pid];
+    }
+  });
+
+  const areaRect = area.getBoundingClientRect();
+  const w = areaRect.width || 600;
+  const h = areaRect.height || 400;
+
+  // Add/update players
+  players.forEach(p => {
+    let el = area.querySelector(`[data-pid="${p.id}"]`);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'tv-floating-player';
+      el.dataset.pid = p.id;
+      area.appendChild(el);
+      // Random starting position
+      floatingPositions[p.id] = {
+        x: 40 + Math.random() * (w - 140),
+        y: 30 + Math.random() * (h - 120),
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: (Math.random() - 0.5) * 1.2,
+        bobPhase: Math.random() * Math.PI * 2,
+      };
+    }
+    el.innerHTML = `
+      <div class="fp-avatar">${AVATARS[p.avatar] || '😎'}</div>
+      <div class="fp-name">${p.name}</div>
+      <div class="fp-chips">$${p.chips.toLocaleString()}</div>
+    `;
+  });
+
+  // Start animation if not running
+  if (!floatAnimFrameId && players.length > 0) {
+    animateFloating();
+  }
+}
+
+function animateFloating() {
+  const area = document.getElementById('tvFloatingArea');
+  if (!area || !area.closest('.tv-screen.active')) {
+    floatAnimFrameId = null;
+    return;
+  }
+
+  const w = area.clientWidth || 600;
+  const h = area.clientHeight || 400;
+
+  for (const p of players) {
+    const pos = floatingPositions[p.id];
+    if (!pos) continue;
+    const el = area.querySelector(`[data-pid="${p.id}"]`);
+    if (!el) continue;
+
+    pos.x += pos.vx;
+    pos.y += pos.vy;
+    pos.bobPhase += 0.02;
+
+    // Bounce off walls
+    if (pos.x < 20 || pos.x > w - 100) pos.vx *= -1;
+    if (pos.y < 10 || pos.y > h - 100) pos.vy *= -1;
+    pos.x = Math.max(20, Math.min(pos.x, w - 100));
+    pos.y = Math.max(10, Math.min(pos.y, h - 100));
+
+    const bobY = Math.sin(pos.bobPhase) * 8;
+    el.style.left = pos.x + 'px';
+    el.style.top = (pos.y + bobY) + 'px';
+  }
+
+  floatAnimFrameId = requestAnimationFrame(animateFloating);
+}
+
 // ── Socket Events ───────────────────────────────────────────────────────
 
-// TV created a room
 socket.on('tv:created', (data) => {
   roomCode = data.code;
   players = data.players;
-  isTVHost = true;
   showJoinInfo();
-  renderPlayers();
 });
 
-// TV joined an existing room (fallback)
 socket.on('tv:connected', (data) => {
   roomCode = data.code;
   players = data.players;
@@ -152,7 +203,6 @@ socket.on('tv:connected', (data) => {
     currentGame = data.currentGame;
     showTVScreen('tv' + capitalize(data.currentGame));
   }
-  CasinoAudio.playerJoin();
 });
 
 socket.on('room:error', (data) => {
@@ -163,27 +213,56 @@ socket.on('players:update', (data) => {
   const prevCount = players.length;
   players = data;
   renderPlayers();
+  updateFloatingPlayers();
   if (data.length > prevCount) CasinoAudio.playerJoin();
-
-  // When first player joins and we're on waiting screen, switch to game select
-  const waitingEl = document.getElementById('tvWaiting');
-  if (waitingEl && waitingEl.classList.contains('active') && players.length > 0) {
-    showTVScreen('tvGameSelect');
-  }
-
-  // Update waiting screen player count
-  const pw = document.getElementById('tvPlayersWaiting');
-  if (pw) {
-    pw.textContent = players.length > 0
-      ? `${players.length} player${players.length > 1 ? 's' : ''} connected`
-      : 'Waiting for players...';
-  }
 });
+
+// ── Voting ──────────────────────────────────────────────────────────────
+
+socket.on('lobby:vote-start', () => {
+  showTVScreen('tvVoting');
+  CasinoAudio.gameStart();
+  // Reset
+  document.querySelectorAll('.tv-vote-card').forEach(c => c.classList.remove('winner'));
+  ['roulette','slots','blackjack','poker','horseracing'].forEach(g => {
+    const count = document.getElementById(`tvVoteCount-${g}`);
+    const fill = document.getElementById(`tvVoteFill-${g}`);
+    if (count) count.textContent = '0';
+    if (fill) fill.style.width = '0%';
+  });
+});
+
+socket.on('vote:update', ({ votes, timer }) => {
+  const total = Object.values(votes).reduce((a, b) => a + b, 0) || 1;
+  for (const [game, count] of Object.entries(votes)) {
+    const countEl = document.getElementById(`tvVoteCount-${game}`);
+    const fillEl = document.getElementById(`tvVoteFill-${game}`);
+    if (countEl) countEl.textContent = count;
+    if (fillEl) fillEl.style.width = `${(count / total) * 100}%`;
+  }
+  const timerEl = document.getElementById('tvVoteTimer');
+  if (timerEl && timer !== undefined && timer !== null) {
+    timerEl.textContent = timer > 0 ? `${timer}s` : "Time's up!";
+    timerEl.style.color = timer <= 5 ? 'var(--red)' : 'var(--gold)';
+  }
+  if (timer <= 5 && timer > 0) CasinoAudio.urgentTick();
+});
+
+socket.on('vote:winner', ({ game }) => {
+  document.querySelectorAll('.tv-vote-card').forEach(c => c.classList.remove('winner'));
+  const card = document.querySelector(`.tv-vote-card[data-game="${game}"]`);
+  if (card) card.classList.add('winner');
+  CasinoAudio.bigWin();
+  showConfetti();
+});
+
+// ── Game Events ─────────────────────────────────────────────────────────
 
 socket.on('game:started', ({ game }) => {
   currentGame = game;
   showTVScreen('tv' + capitalize(game));
   CasinoAudio.gameStart();
+  renderPlayers(); // render players bar in game screen
 });
 
 socket.on('game:state', ({ game, state }) => {
@@ -204,6 +283,19 @@ socket.on('game:timer', ({ timer }) => {
   }
 });
 
+socket.on('game:ended', () => {
+  currentGame = null;
+  showTVScreen('tvVoting');
+  // Reset votes
+  document.querySelectorAll('.tv-vote-card').forEach(c => c.classList.remove('winner'));
+  ['roulette','slots','blackjack','poker','horseracing'].forEach(g => {
+    const count = document.getElementById(`tvVoteCount-${g}`);
+    const fill = document.getElementById(`tvVoteFill-${g}`);
+    if (count) count.textContent = '0';
+    if (fill) fill.style.width = '0%';
+  });
+});
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 function capitalize(s) {
@@ -215,18 +307,22 @@ function showTVScreen(id) {
   document.querySelectorAll('.tv-screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById(id);
   if (el) el.classList.add('active');
+  // Stop floating animation when leaving waiting screen
+  if (id !== 'tvWaiting') {
+    floatAnimFrameId = null;
+  }
 }
 
 function renderPlayers() {
-  const el = document.getElementById('tvPlayers');
-  el.innerHTML = players.map(p => `
+  const html = players.map(p => `
     <div class="tv-player" id="tvPlayer_${p.id}">
       <div class="avatar">${AVATARS[p.avatar] || '😎'}</div>
       <div class="name">${p.name}</div>
       <div class="chips">$${p.chips.toLocaleString()}</div>
-      ${p.isHost ? '<div class="host-badge">HOST</div>' : ''}
     </div>
   `).join('');
+  // Update all player bars in game screens
+  document.querySelectorAll('.tv-players').forEach(el => el.innerHTML = html);
 }
 
 function renderTVCard(card) {
@@ -280,9 +376,7 @@ function renderTVRoulette(state) {
       <div class="tv-status">Place your bets!</div>
       <div class="tv-roulette-layout">
         <div class="tv-roulette-center">
-          <div class="tv-roulette-wheel">
-            <div class="center">?</div>
-          </div>
+          <div class="tv-roulette-wheel"><div class="center">?</div></div>
         </div>
         ${betEntries.length > 0 ? `
           <div class="tv-bets-list">
@@ -306,19 +400,15 @@ function renderTVRoulette(state) {
     el.innerHTML = `
       <div class="tv-roulette-layout">
         <div class="tv-roulette-center">
-          <div class="tv-roulette-wheel spinning">
-            <div class="center">?</div>
-          </div>
+          <div class="tv-roulette-wheel spinning"><div class="center">?</div></div>
           <div class="tv-status" style="font-size:28px;color:var(--gold);margin-top:8px">Spinning...</div>
         </div>
       </div>
     `;
-    // Fallback: if stuck on spinning for 7s, request fresh state
     clearTimeout(window._tvSpinTimeout);
-    window._tvSpinTimeout = setTimeout(() => {
-      socket.emit('game:request-state');
-    }, 7000);
+    window._tvSpinTimeout = setTimeout(() => { socket.emit('game:request-state'); }, 7000);
   } else if (state.phase === 'result' && state.result) {
+    clearTimeout(window._tvSpinTimeout);
     if (lastRoulettePhase !== 'result') {
       CasinoAudio.ballLand();
       const winners = Object.entries(state.bets || {}).some(([, bets]) => bets.some(b => b.won));
@@ -392,7 +482,7 @@ function renderTVSlots(state) {
           ${p?.name || 'Player'} spins!
         </div>
         <div class="tv-reels">
-          ${result.reels.map((reel, ri) => `
+          ${result.reels.map(reel => `
             <div class="tv-reel">
               ${reel.map((sym, si) => `
                 <div class="tv-slot-symbol ${si === 1 ? 'middle' : ''}">${SLOT_SYMBOLS[sym]}</div>
@@ -469,9 +559,7 @@ function renderTVBlackjack(state) {
         <div class="tv-hand-label">Dealer ${dealerVal !== '?' ? `(${dealerVal})` : ''}</div>
         <div class="tv-cards-row">${dealerHand.map(c => renderTVCard(c)).join('')}</div>
       </div>
-
       <div style="border-top:2px solid rgba(255,255,255,0.1);margin:8px 0"></div>
-
       <div class="tv-players-area">
         <div class="tv-hand-label">Players</div>
         <div class="tv-player-hands">
@@ -527,7 +615,7 @@ function renderTVPoker(state) {
   const isShowdown = state.phase === 'result' || state.phase === 'showdown';
 
   if (state.phase !== lastPokerPhase) {
-    if (state.phase === 'flop' || state.phase === 'turn' || state.phase === 'river') CasinoAudio.card();
+    if (['flop','turn','river'].includes(state.phase)) CasinoAudio.card();
     if (state.phase === 'result' && state.winner) CasinoAudio.bigWin();
     lastPokerPhase = state.phase;
   }
@@ -535,18 +623,13 @@ function renderTVPoker(state) {
   el.innerHTML = `
     <div class="tv-poker-table">
       <div class="tv-pot">Pot: $${state.pot || 0}</div>
-
       <div class="tv-community-cards">
         ${community.length > 0 ? community.map(c => renderTVCard(c)).join('') :
           `<div style="color:rgba(255,255,255,0.3);font-size:16px">
             ${state.phase === 'preflop' ? 'Pre-flop' : 'Waiting...'}
           </div>`}
       </div>
-
-      <div style="font-size:14px;color:var(--text-dim);margin:4px 0;text-transform:uppercase">
-        ${state.phase}
-      </div>
-
+      <div style="font-size:14px;color:var(--text-dim);margin:4px 0;text-transform:uppercase">${state.phase}</div>
       <div class="tv-poker-players">
         ${(state.turnOrder || []).map((pid, idx) => {
           const p = players.find(pl => pl.id === pid);
@@ -566,8 +649,7 @@ function renderTVPoker(state) {
               ${isWinner ? '<div style="color:var(--green);font-size:14px;font-weight:800">WINNER!</div>' : ''}
               ${hand ? `
                 <div style="display:flex;gap:3px;margin-top:2px;justify-content:center">
-                  ${Array.isArray(hand) ? hand.map(c => renderTVCard(c)).join('') :
-                    `<div style="font-size:10px;color:var(--text-dim)">${state.handBacks?.[pid] || 2} cards</div>`}
+                  ${Array.isArray(hand) ? hand.map(c => renderTVCard(c)).join('') : ''}
                 </div>
               ` : `
                 <div style="display:flex;gap:2px;margin-top:2px;justify-content:center">
@@ -607,7 +689,6 @@ function renderTVHorseRacing(state) {
       <div class="tv-timer" ${state.timer <= 5 ? 'style="color:var(--red)"' : ''}>${state.timer}</div>
       <div class="tv-status">Pick your horse!</div>
     ` : ''}
-
     <div class="tv-race-track">
       ${horses.map(h => `
         <div class="tv-horse-lane">
@@ -623,7 +704,6 @@ function renderTVHorseRacing(state) {
         </div>
       `).join('')}
     </div>
-
     ${state.phase === 'result' && state.winner ? `
       <div class="tv-race-result" style="color:${horses.find(h=>h.id===state.winner)?.color || 'var(--gold)'}">
         🏆 ${horses.find(h=>h.id===state.winner)?.name} WINS! 🏆

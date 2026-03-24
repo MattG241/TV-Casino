@@ -217,18 +217,29 @@ body { height: 100vh; height: 100dvh; }
   overflow: hidden;
 }
 
-/* ── TV Waiting Screen (QR Join) ───────────────────────────────────────── */
-.tv-waiting { text-align: center; }
-.tv-waiting h2 { font-size: 32px; margin-bottom: 16px; color: var(--gold); }
-
-.tv-join-layout {
+/* ── TV Waiting Screen (QR + Floating Players) ────────────────────────── */
+.tv-waiting-layout {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 40px;
+  width: 100%;
+  height: 100%;
 }
 
-.tv-qr-section { text-align: center; }
+.tv-join-panel {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  border-right: 2px solid var(--border);
+}
+
+.tv-join-panel h2 {
+  font-size: 24px;
+  color: var(--gold);
+  margin-bottom: 12px;
+}
 
 #qrCanvas {
   border-radius: 12px;
@@ -237,79 +248,153 @@ body { height: 100vh; height: 100dvh; }
 }
 
 .tv-join-url {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--text-dim);
   margin-top: 8px;
   word-break: break-all;
-  max-width: 220px;
-}
-
-.tv-join-info { text-align: left; }
-
-.tv-join-step {
-  font-size: 18px;
-  color: var(--text);
-  margin-bottom: 10px;
-  padding-left: 8px;
-  border-left: 3px solid var(--gold);
-}
-
-.tv-join-step strong {
-  color: var(--gold);
-  font-size: 22px;
-  letter-spacing: 4px;
-}
-
-.tv-players-waiting {
-  font-size: 16px;
-  color: var(--text-dim);
-  margin-top: 16px;
-  animation: pulse 2s ease infinite;
-}
-
-/* ── TV Game Selection ─────────────────────────────────────────────────── */
-.tv-game-select {
   text-align: center;
-  width: 100%;
+  max-width: 200px;
 }
 
-.tv-game-select h2 {
+.tv-join-code {
+  font-size: 16px;
+  color: var(--text);
+  margin-top: 8px;
+}
+
+.tv-join-code strong {
+  color: var(--gold);
+  font-size: 24px;
+  letter-spacing: 6px;
+}
+
+.tv-floating-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tv-waiting-text {
+  font-size: 20px;
+  color: var(--text-dim);
+  animation: pulse 2s ease infinite;
+  position: absolute;
+  text-align: center;
+  pointer-events: none;
+}
+
+.tv-floating-player {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.5s ease;
+}
+
+.tv-floating-player .fp-avatar {
+  font-size: 48px;
+  filter: drop-shadow(0 0 10px rgba(255,215,0,0.3));
+}
+
+.tv-floating-player .fp-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg-card);
+  padding: 2px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.tv-floating-player .fp-chips {
+  font-size: 12px;
+  color: var(--gold);
+  font-weight: 800;
+}
+
+@keyframes floatBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+/* ── TV Voting Screen ──────────────────────────────────────────────────── */
+.tv-voting {
+  width: 100%;
+  text-align: center;
+}
+
+.tv-voting h2 {
   font-size: 28px;
   color: var(--gold);
-  margin-bottom: 20px;
+  margin-bottom: 8px;
 }
 
-.tv-game-grid {
+.tv-vote-timer {
+  font-size: 36px;
+  font-weight: 900;
+  color: var(--gold);
+  margin-bottom: 12px;
+}
+
+.tv-vote-grid {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   justify-content: center;
   flex-wrap: wrap;
 }
 
-.tv-game-card {
+.tv-vote-card {
   background: var(--bg-card);
   border: 2px solid var(--border);
-  border-radius: 16px;
-  padding: 20px 24px;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 120px;
+  border-radius: 14px;
+  padding: 12px 16px;
+  min-width: 130px;
   text-align: center;
+  transition: all 0.3s;
+  position: relative;
 }
 
-.tv-game-card:hover, .tv-game-card:focus {
+.tv-vote-card.winner {
   border-color: var(--gold);
-  box-shadow: 0 0 30px rgba(255,215,0,0.2);
-  transform: translateY(-4px);
+  box-shadow: 0 0 30px rgba(255,215,0,0.4);
+  animation: pulse 0.5s ease 3;
 }
 
-.tv-game-icon { font-size: 40px; margin-bottom: 8px; }
-.tv-game-name { font-size: 16px; font-weight: 700; color: var(--text); }
+.tv-vote-icon { font-size: 32px; margin-bottom: 4px; }
+.tv-vote-name { font-size: 14px; font-weight: 700; }
 
-.tv-game-select-hint {
-  font-size: 13px;
-  color: var(--text-dim);
-  margin-top: 16px;
+.tv-vote-bar {
+  height: 6px;
+  background: var(--bg-dark);
+  border-radius: 3px;
+  margin: 6px 0;
+  overflow: hidden;
+}
+
+.tv-vote-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--gold-dark));
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.tv-vote-count {
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--gold);
+}
+
+.tv-voters {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 12px;
+  flex-wrap: wrap;
 }
 
 /* ── TV Roulette ───────────────────────────────────────────────────────── */

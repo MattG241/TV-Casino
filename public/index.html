@@ -17,24 +17,22 @@
       <div class="logo-sub">Play on Phone &bull; Watch on TV</div>
     </div>
 
-    <!-- LOBBY SCREEN -->
-    <div class="screen active" id="lobbyScreen">
+    <!-- JOIN SCREEN -->
+    <div class="screen active" id="joinScreen">
       <div class="avatar-picker" id="avatarPicker"></div>
       <div class="lobby-actions">
         <div class="input-group">
           <input type="text" id="playerName" placeholder="Your Name" maxlength="12" autocomplete="off">
         </div>
-        <button class="btn btn-gold btn-block" onclick="createRoom()">Create Room</button>
-        <div class="divider">or join an existing room</div>
         <div class="join-section">
           <input type="text" id="roomCode" placeholder="CODE" maxlength="4" autocomplete="off">
-          <button class="btn btn-outline" onclick="joinRoom()">Join</button>
+          <button class="btn btn-gold" onclick="joinRoom()">Join</button>
         </div>
       </div>
     </div>
 
-    <!-- ROOM SCREEN -->
-    <div class="screen" id="roomScreen">
+    <!-- LOBBY SCREEN (waiting for everyone) -->
+    <div class="screen" id="lobbyScreen">
       <div class="room-header">
         <div>
           <div style="font-size:11px;color:var(--text-dim)">ROOM</div>
@@ -46,65 +44,101 @@
         </div>
       </div>
       <div class="players-bar" id="playersBar"></div>
+      <div id="lobbyContent">
+        <div class="lobby-waiting-msg">Waiting for everyone to join...</div>
+        <button class="btn btn-gold btn-block btn-everyones-in" id="everyonesInBtn" onclick="everyonesIn()">
+          EVERYONE'S IN!
+        </button>
+        <div class="lobby-player-count" id="lobbyPlayerCount"></div>
+      </div>
+    </div>
 
-      <!-- Game Selection (host only, or waiting) -->
-      <div id="gameSelection">
-        <div style="text-align:center;margin-bottom:8px;font-size:14px;color:var(--text-dim)" id="selectLabel">Choose a game</div>
-        <div class="game-grid">
-          <div class="game-card" onclick="selectGame('roulette')">
-            <div class="game-icon">🎰</div>
-            <div class="game-name">Roulette</div>
-            <div class="game-desc">Bet on numbers & colors</div>
-          </div>
-          <div class="game-card" onclick="selectGame('slots')">
-            <div class="game-icon">🍒</div>
-            <div class="game-name">Slots</div>
-            <div class="game-desc">Spin to win big</div>
-          </div>
-          <div class="game-card" onclick="selectGame('blackjack')">
-            <div class="game-icon">🃏</div>
-            <div class="game-name">Blackjack</div>
-            <div class="game-desc">Beat the dealer to 21</div>
-          </div>
-          <div class="game-card" onclick="selectGame('poker')">
-            <div class="game-icon">♠️</div>
-            <div class="game-name">Poker</div>
-            <div class="game-desc">Texas Hold'em</div>
-          </div>
-          <div class="game-card" onclick="selectGame('horseracing')">
-            <div class="game-icon">🏇</div>
-            <div class="game-name">Horses</div>
-            <div class="game-desc">Pick a winner</div>
-          </div>
+    <!-- VOTE SCREEN -->
+    <div class="screen" id="voteScreen">
+      <div class="room-header">
+        <div>
+          <div style="font-size:11px;color:var(--text-dim)">ROOM</div>
+          <div class="room-code" id="voteRoomCode"></div>
+        </div>
+        <div class="chips-display">
+          <span class="chip-icon">$</span>
+          <span id="voteChips">1000</span>
         </div>
       </div>
+      <div class="vote-header">Vote for a game!</div>
+      <div class="vote-timer-bar"><div class="vote-timer-fill" id="voteTimerFill"></div></div>
+      <div class="vote-timer-text" id="voteTimerText"></div>
+      <div class="game-grid" id="voteGrid">
+        <div class="game-card vote-card" onclick="voteForGame('roulette')">
+          <div class="game-icon">🎰</div>
+          <div class="game-name">Roulette</div>
+          <div class="game-desc">Bet on numbers & colors</div>
+          <div class="vote-count" id="vote-roulette">0</div>
+        </div>
+        <div class="game-card vote-card" onclick="voteForGame('slots')">
+          <div class="game-icon">🍒</div>
+          <div class="game-name">Slots</div>
+          <div class="game-desc">Spin to win big</div>
+          <div class="vote-count" id="vote-slots">0</div>
+        </div>
+        <div class="game-card vote-card" onclick="voteForGame('blackjack')">
+          <div class="game-icon">🃏</div>
+          <div class="game-name">Blackjack</div>
+          <div class="game-desc">Beat the dealer to 21</div>
+          <div class="vote-count" id="vote-blackjack">0</div>
+        </div>
+        <div class="game-card vote-card" onclick="voteForGame('poker')">
+          <div class="game-icon">♠️</div>
+          <div class="game-name">Poker</div>
+          <div class="game-desc">Texas Hold'em</div>
+          <div class="vote-count" id="vote-poker">0</div>
+        </div>
+        <div class="game-card vote-card" onclick="voteForGame('horseracing')">
+          <div class="game-icon">🏇</div>
+          <div class="game-name">Horses</div>
+          <div class="game-desc">Pick a winner</div>
+          <div class="vote-count" id="vote-horseracing">0</div>
+        </div>
+      </div>
+    </div>
 
-      <!-- GAME VIEWS -->
-      <div id="gameArea" style="display:none">
-        <button class="back-btn" onclick="backToLobby()">&#8592; Back to Games</button>
+    <!-- GAME SCREEN -->
+    <div class="screen" id="gameScreen">
+      <div class="room-header">
+        <div>
+          <div style="font-size:11px;color:var(--text-dim)">ROOM</div>
+          <div class="room-code" id="gameRoomCode"></div>
+        </div>
+        <div class="chips-display">
+          <span class="chip-icon">$</span>
+          <span id="gameChips">1000</span>
+        </div>
+      </div>
+      <div class="players-bar" id="gamePlayersBar"></div>
 
+      <div id="gameArea">
         <!-- ROULETTE -->
-        <div class="screen" id="rouletteGame">
+        <div class="game-view" id="rouletteGame">
           <div id="rouletteContent"></div>
         </div>
 
         <!-- SLOTS -->
-        <div class="screen" id="slotsGame">
+        <div class="game-view" id="slotsGame">
           <div id="slotsContent"></div>
         </div>
 
         <!-- BLACKJACK -->
-        <div class="screen" id="blackjackGame">
+        <div class="game-view" id="blackjackGame">
           <div id="blackjackContent"></div>
         </div>
 
         <!-- POKER -->
-        <div class="screen" id="pokerGame">
+        <div class="game-view" id="pokerGame">
           <div id="pokerContent"></div>
         </div>
 
         <!-- HORSE RACING -->
-        <div class="screen" id="horseracingGame">
+        <div class="game-view" id="horseracingGame">
           <div id="horseracingContent"></div>
         </div>
       </div>

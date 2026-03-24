@@ -729,6 +729,37 @@ function broadcastPlayerHands(room) {
   }
 }
 
+function finishVoting(room) {
+  if (!room.votes || Object.keys(room.votes).length === 0) return;
+
+  // Count votes
+  const counts = { roulette: 0, slots: 0, blackjack: 0, poker: 0, horseracing: 0 };
+  for (const g of Object.values(room.votes)) {
+    if (counts[g] !== undefined) counts[g]++;
+  }
+
+  // Find winner (most votes, random tiebreak)
+  let maxVotes = 0;
+  let winners = [];
+  for (const [game, count] of Object.entries(counts)) {
+    if (count > maxVotes) { maxVotes = count; winners = [game]; }
+    else if (count === maxVotes && count > 0) winners.push(game);
+  }
+
+  const winningGame = winners[Math.floor(Math.random() * winners.length)];
+  console.log(`[VOTE] Winner: ${winningGame} with ${maxVotes} votes`);
+
+  broadcastToRoom(room, 'vote:winner', { game: winningGame });
+
+  // Start the game after a short delay
+  setTimeout(() => {
+    room.currentGame = winningGame;
+    room.votes = {};
+    broadcastToRoom(room, 'game:started', { game: winningGame });
+    if (games[winningGame]) games[winningGame].start(room);
+  }, 2500);
+}
+
 function startBettingTimer(room, seconds) {
   // Clear any existing timer
   if (room._timerInterval) clearInterval(room._timerInterval);
@@ -800,7 +831,54 @@ io.on('connection', (socket) => {
     }
   });
 
-  // TV selects game (when TV is host)
+  // Player signals everyone is in - start voting
+  socket.on('lobby:ready', () => {
+    if (!currentRoom) return;
+    currentRoom.votes = {};
+    currentRoom.voteTimer = null;
+    currentRoom._voteTimerInterval = null;
+    broadcastToRoom(currentRoom, 'lobby:vote-start');
+  });
+
+  // Player votes for a game
+  socket.on('game:vote', ({ game }) => {
+    if (!currentRoom || !game) return;
+    if (!currentRoom.votes) currentRoom.votes = {};
+    currentRoom.votes[playerId] = game;
+
+    // Count votes
+    const counts = { roulette: 0, slots: 0, blackjack: 0, poker: 0, horseracing: 0 };
+    for (const g of Object.values(currentRoom.votes)) {
+      if (counts[g] !== undefined) counts[g]++;
+    }
+
+    // Start 30s timer on first vote
+    if (Object.keys(currentRoom.votes).length === 1 && !currentRoom._voteTimerInterval) {
+      currentRoom.voteTimer = 30;
+      currentRoom._voteTimerInterval = setInterval(() => {
+        currentRoom.voteTimer--;
+        broadcastToRoom(currentRoom, 'vote:update', { votes: counts, timer: currentRoom.voteTimer });
+        if (currentRoom.voteTimer <= 0) {
+          clearInterval(currentRoom._voteTimerInterval);
+          currentRoom._voteTimerInterval = null;
+          finishVoting(currentRoom);
+        }
+      }, 1000);
+    }
+
+    broadcastToRoom(currentRoom, 'vote:update', { votes: counts, timer: currentRoom.voteTimer });
+
+    // If everyone has voted, finish immediately
+    if (Object.keys(currentRoom.votes).length >= currentRoom.players.length) {
+      if (currentRoom._voteTimerInterval) {
+        clearInterval(currentRoom._voteTimerInterval);
+        currentRoom._voteTimerInterval = null;
+      }
+      setTimeout(() => finishVoting(currentRoom), 1500);
+    }
+  });
+
+  // TV selects game (when TV is host) - kept as fallback
   socket.on('tv:select-game', ({ game }) => {
     if (!currentRoom || currentRoom.tvHostSocket !== socket) return;
     currentRoom.currentGame = game;

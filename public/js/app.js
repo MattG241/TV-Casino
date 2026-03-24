@@ -8,10 +8,10 @@ let myId = null;
 let myName = '';
 let myChips = 1000;
 let roomCode = '';
-let isHost = false;
 let selectedAvatar = 0;
 let currentGame = null;
 let players = [];
+let myVote = null;
 
 const AVATARS = ['😎', '🤠', '👑', '🎩', '🦊', '🐺', '🦁', '🐲', '💀', '🤖', '👽', '🎭'];
 const SUIT_SYMBOLS = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
@@ -64,11 +64,6 @@ function showToast(msg) {
 
 // ── Room Management ─────────────────────────────────────────────────────
 
-function createRoom() {
-  myName = document.getElementById('playerName').value.trim() || 'Player';
-  socket.emit('room:create', { playerName: myName, avatar: selectedAvatar });
-}
-
 function joinRoom() {
   myName = document.getElementById('playerName').value.trim() || 'Player';
   const code = document.getElementById('roomCode').value.trim().toUpperCase();
@@ -76,20 +71,11 @@ function joinRoom() {
   socket.emit('room:join', { code, playerName: myName, avatar: selectedAvatar });
 }
 
-socket.on('room:created', (data) => {
-  myId = data.playerId;
-  roomCode = data.code;
-  isHost = true;
-  players = data.players;
-  enterRoom();
-});
-
 socket.on('room:joined', (data) => {
   myId = data.playerId;
   roomCode = data.code;
-  isHost = false;
   players = data.players;
-  enterRoom();
+  enterLobby();
   if (data.currentGame) {
     currentGame = data.currentGame;
     showGameUI(currentGame);
@@ -98,52 +84,99 @@ socket.on('room:joined', (data) => {
 
 socket.on('room:error', (data) => showToast(data.message));
 
-function enterRoom() {
-  showScreen('roomScreen');
+function enterLobby() {
+  showScreen('lobbyScreen');
   document.getElementById('displayRoomCode').textContent = roomCode;
   updatePlayers(players);
-  updateSelectLabel();
+  updateLobbyCount();
 }
 
-function updateSelectLabel() {
-  const label = document.getElementById('selectLabel');
-  if (isHost) {
-    label.textContent = 'Choose a game to play';
-    document.querySelectorAll('.game-card').forEach(c => c.style.opacity = '1');
-  } else {
-    label.textContent = 'Game will be selected on the TV';
-    document.querySelectorAll('.game-card').forEach(c => c.style.opacity = '0.5');
+function updateLobbyCount() {
+  const el = document.getElementById('lobbyPlayerCount');
+  if (el) {
+    el.textContent = `${players.length} player${players.length !== 1 ? 's' : ''} in the room`;
   }
 }
 
 socket.on('players:update', (data) => {
   players = data;
   updatePlayers(data);
+  updateLobbyCount();
   const me = data.find(p => p.id === myId);
   if (me) {
     myChips = me.chips;
-    document.getElementById('myChips').textContent = myChips.toLocaleString();
-    isHost = me.isHost;
+    // Update chips on all screens
+    document.querySelectorAll('#myChips, #voteChips, #gameChips').forEach(el => {
+      el.textContent = myChips.toLocaleString();
+    });
   }
 });
 
 function updatePlayers(list) {
-  const bar = document.getElementById('playersBar');
-  bar.innerHTML = list.map(p => `
-    <div class="player-chip ${p.isHost ? 'is-host' : ''}">
+  const bars = document.querySelectorAll('#playersBar, #gamePlayersBar');
+  const html = list.map(p => `
+    <div class="player-chip">
       <div class="avatar">${AVATARS[p.avatar] || '😎'}</div>
       <div class="name">${p.name}${p.id === myId ? ' (you)' : ''}</div>
       <div class="chips">$${p.chips.toLocaleString()}</div>
     </div>
   `).join('');
+  bars.forEach(bar => bar.innerHTML = html);
 }
 
-// ── Game Selection ──────────────────────────────────────────────────────
+// ── Everyone's In ───────────────────────────────────────────────────────
 
-function selectGame(game) {
-  if (!isHost) return showToast('Only the host can pick games');
-  socket.emit('game:select', { game });
+function everyonesIn() {
+  socket.emit('lobby:ready');
 }
+
+socket.on('lobby:vote-start', () => {
+  showScreen('voteScreen');
+  document.getElementById('voteRoomCode').textContent = roomCode;
+  myVote = null;
+  // Reset vote cards
+  document.querySelectorAll('.vote-card').forEach(c => {
+    c.classList.remove('voted', 'winner');
+  });
+});
+
+// ── Game Voting ─────────────────────────────────────────────────────────
+
+function voteForGame(game) {
+  if (myVote) return; // already voted
+  myVote = game;
+  socket.emit('game:vote', { game });
+  showToast(`Voted for ${game}!`);
+  // Highlight voted card
+  document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('voted'));
+  const card = document.querySelector(`#vote-${game}`)?.closest('.vote-card');
+  if (card) card.classList.add('voted');
+}
+
+socket.on('vote:update', ({ votes, timer }) => {
+  // Update vote counts
+  for (const [game, count] of Object.entries(votes)) {
+    const el = document.getElementById(`vote-${game}`);
+    if (el) el.textContent = count;
+  }
+  // Update timer
+  if (timer !== undefined && timer !== null) {
+    const fill = document.getElementById('voteTimerFill');
+    const text = document.getElementById('voteTimerText');
+    if (fill) fill.style.width = `${(timer / 30) * 100}%`;
+    if (text) text.textContent = timer > 0 ? `${timer}s remaining` : "Time's up!";
+  }
+});
+
+socket.on('vote:winner', ({ game }) => {
+  // Highlight winning game
+  document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('winner'));
+  const el = document.getElementById(`vote-${game}`);
+  if (el) el.closest('.vote-card').classList.add('winner');
+  showToast(`${game.charAt(0).toUpperCase() + game.slice(1)} wins!`);
+});
+
+// ── Game Events ─────────────────────────────────────────────────────────
 
 socket.on('game:started', ({ game }) => {
   currentGame = game;
@@ -151,21 +184,26 @@ socket.on('game:started', ({ game }) => {
 });
 
 function showGameUI(game) {
-  document.getElementById('gameSelection').style.display = 'none';
-  document.getElementById('gameArea').style.display = 'block';
-  document.querySelectorAll('#gameArea .screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(game + 'Game').classList.add('active');
+  showScreen('gameScreen');
+  document.getElementById('gameRoomCode').textContent = roomCode;
+  document.querySelectorAll('.game-view').forEach(v => v.classList.remove('active'));
+  const view = document.getElementById(game + 'Game');
+  if (view) view.classList.add('active');
 }
 
-function backToLobby() {
-  if (isHost) {
-    document.getElementById('gameArea').style.display = 'none';
-    document.getElementById('gameSelection').style.display = 'block';
-    currentGame = null;
-  } else {
-    showToast('Only the host can switch games');
-  }
-}
+socket.on('game:ended', () => {
+  // Go back to voting
+  currentGame = null;
+  myVote = null;
+  showScreen('voteScreen');
+  document.getElementById('voteRoomCode').textContent = roomCode;
+  document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('voted', 'winner'));
+  // Reset vote counts
+  ['roulette', 'slots', 'blackjack', 'poker', 'horseracing'].forEach(g => {
+    const el = document.getElementById(`vote-${g}`);
+    if (el) el.textContent = '0';
+  });
+});
 
 // ── Game State Handler ──────────────────────────────────────────────────
 
@@ -179,7 +217,7 @@ socket.on('game:state', ({ game, state }) => {
 
 socket.on('game:timer', ({ timer }) => {
   const el = document.querySelector('.timer-text');
-  if (el) el.textContent = timer > 0 ? `${timer}s remaining` : 'Time\'s up!';
+  if (el) el.textContent = timer > 0 ? `${timer}s remaining` : "Time's up!";
   const fill = document.querySelector('.timer-fill');
   if (fill) {
     const maxTime = currentGame === 'roulette' ? 20 : 15;
@@ -188,6 +226,11 @@ socket.on('game:timer', ({ timer }) => {
 });
 
 socket.on('game:error', ({ message }) => showToast(message));
+
+// Client requests current game state (fallback for missed updates)
+socket.on('game:request-state', () => {
+  socket.emit('game:request-state');
+});
 
 // ── ROULETTE RENDERER ───────────────────────────────────────────────────
 
@@ -254,6 +297,7 @@ function renderRoulette(state) {
       socket.emit('game:request-state');
     }, 7000);
   } else if (state.phase === 'result' && state.result) {
+    clearTimeout(window._spinTimeout);
     const myBets = state.bets[myId] || [];
     const totalWin = myBets.reduce((s, b) => s + (b.winAmount || 0), 0);
     el.innerHTML = `
