@@ -5,61 +5,71 @@ const Race3D = (() => {
   let horses3d = [];
   let container = null;
   let initialized = false;
-  let trackPath = null; // THREE.CurvePath for the oval
 
   // Track dimensions
-  const STRAIGHT = 80;
-  const TURN_RADIUS = 30;
-  const TRACK_W = 24;
-  const LANE_SPACING = 1.8;
+  const STRAIGHT = 70;
+  const RADIUS = 28;
+  const TRACK_W = 20;
 
-  function buildTrackPath() {
-    // Oval: bottom straight → right turn → top straight → left turn
-    const path = new THREE.CurvePath();
-    // Bottom straight (left to right)
-    path.add(new THREE.LineCurve3(
-      new THREE.Vector3(-STRAIGHT/2, 0, TURN_RADIUS),
-      new THREE.Vector3(STRAIGHT/2, 0, TURN_RADIUS)
-    ));
-    // Right turn (180° arc)
-    const rightPts = [];
-    for (let a = -Math.PI/2; a <= Math.PI/2; a += Math.PI/20) {
-      rightPts.push(new THREE.Vector3(
-        STRAIGHT/2 + Math.cos(a) * TURN_RADIUS,
-        0,
-        Math.sin(a) * TURN_RADIUS
-      ));
+  // Pre-computed track points for the oval
+  let trackPoints = [];
+  let trackTangents = [];
+  const TRACK_SEGMENTS = 400;
+
+  function buildTrack() {
+    trackPoints = [];
+    trackTangents = [];
+
+    for (let i = 0; i <= TRACK_SEGMENTS; i++) {
+      const t = i / TRACK_SEGMENTS;
+      const totalPerimeter = 2 * STRAIGHT + 2 * Math.PI * RADIUS;
+      let d = t * totalPerimeter;
+
+      let x, z, tx, tz;
+
+      if (d < STRAIGHT) {
+        // Bottom straight (left to right)
+        x = -STRAIGHT / 2 + d;
+        z = RADIUS;
+        tx = 1; tz = 0;
+      } else if (d < STRAIGHT + Math.PI * RADIUS) {
+        // Right turn
+        const angle = (d - STRAIGHT) / RADIUS - Math.PI / 2;
+        x = STRAIGHT / 2 + Math.cos(angle) * RADIUS;
+        z = Math.sin(angle) * RADIUS;
+        tx = -Math.sin(angle); tz = Math.cos(angle);
+      } else if (d < 2 * STRAIGHT + Math.PI * RADIUS) {
+        // Top straight (right to left)
+        const along = d - STRAIGHT - Math.PI * RADIUS;
+        x = STRAIGHT / 2 - along;
+        z = -RADIUS;
+        tx = -1; tz = 0;
+      } else {
+        // Left turn
+        const angle = (d - 2 * STRAIGHT - Math.PI * RADIUS) / RADIUS + Math.PI / 2;
+        x = -STRAIGHT / 2 + Math.cos(angle) * RADIUS;
+        z = Math.sin(angle) * RADIUS;
+        tx = -Math.sin(angle); tz = Math.cos(angle);
+      }
+
+      trackPoints.push({ x, z });
+      const len = Math.sqrt(tx * tx + tz * tz) || 1;
+      trackTangents.push({ x: tx / len, z: tz / len });
     }
-    for (let i = 0; i < rightPts.length - 1; i++) {
-      path.add(new THREE.LineCurve3(rightPts[i], rightPts[i+1]));
-    }
-    // Top straight (right to left)
-    path.add(new THREE.LineCurve3(
-      new THREE.Vector3(STRAIGHT/2, 0, -TURN_RADIUS),
-      new THREE.Vector3(-STRAIGHT/2, 0, -TURN_RADIUS)
-    ));
-    // Left turn (180° arc)
-    const leftPts = [];
-    for (let a = Math.PI/2; a <= 3*Math.PI/2; a += Math.PI/20) {
-      leftPts.push(new THREE.Vector3(
-        -STRAIGHT/2 + Math.cos(a) * TURN_RADIUS,
-        0,
-        Math.sin(a) * TURN_RADIUS
-      ));
-    }
-    for (let i = 0; i < leftPts.length - 1; i++) {
-      path.add(new THREE.LineCurve3(leftPts[i], leftPts[i+1]));
-    }
-    return path;
   }
 
-  function getTrackPoint(t, laneOffset) {
-    // t = 0..1 around the track, laneOffset = lateral offset
-    const pt = trackPath.getPointAt(t % 1);
-    const tan = trackPath.getTangentAt(t % 1).normalize();
-    // Normal is perpendicular to tangent on XZ plane
-    const normal = new THREE.Vector3(-tan.z, 0, tan.x);
-    return pt.clone().add(normal.multiplyScalar(laneOffset));
+  function getTrackPos(t, laneOffset) {
+    const idx = Math.floor(((t % 1) + 1) % 1 * TRACK_SEGMENTS);
+    const safeIdx = Math.max(0, Math.min(TRACK_SEGMENTS, idx));
+    const pt = trackPoints[safeIdx];
+    const tan = trackTangents[safeIdx];
+    // Normal = perpendicular to tangent
+    return {
+      x: pt.x + (-tan.z) * laneOffset,
+      z: pt.z + tan.x * laneOffset,
+      tx: tan.x,
+      tz: tan.z,
+    };
   }
 
   function init(containerEl) {
@@ -68,165 +78,130 @@ const Race3D = (() => {
     const w = container.clientWidth;
     const h = container.clientHeight;
 
-    scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x88aacc, 0.003);
+    buildTrack();
 
-    camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 800);
-    camera.position.set(0, 60, 90);
-    camera.lookAt(0, 0, 0);
+    scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x99bbdd, 0.0025);
+
+    camera = new THREE.PerspectiveCamera(45, w / h, 0.5, 600);
+    camera.position.set(0, 50, 80);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(w, h);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.setClearColor(0x88aacc);
+    renderer.setClearColor(0x99bbdd);
     container.appendChild(renderer.domElement);
 
-    // Lighting
-    scene.add(new THREE.AmbientLight(0xffeedd, 0.6));
-    const sun = new THREE.DirectionalLight(0xfff8e8, 1.0);
-    sun.position.set(40, 80, 60);
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const sun = new THREE.DirectionalLight(0xfff8e0, 0.9);
+    sun.position.set(60, 100, 40);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.camera.left = -120;
     sun.shadow.camera.right = 120;
     sun.shadow.camera.top = 80;
     sun.shadow.camera.bottom = -80;
-    sun.shadow.camera.far = 300;
     scene.add(sun);
 
     // Ground
-    const groundGeo = new THREE.PlaneGeometry(500, 500);
-    const groundMat = new THREE.MeshLambertMaterial({ color: 0x3a7a2a });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(500, 500),
+      new THREE.MeshLambertMaterial({ color: 0x3a8a2a })
+    );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.05;
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Inner field (darker grass inside the oval)
-    const innerGeo = new THREE.CircleGeometry(TURN_RADIUS - 2, 32);
-    const innerMat = new THREE.MeshLambertMaterial({ color: 0x2d6a1e });
-    // Left inner
-    const innerL = new THREE.Mesh(innerGeo, innerMat);
-    innerL.rotation.x = -Math.PI / 2;
-    innerL.position.set(-STRAIGHT/2, 0.01, 0);
-    scene.add(innerL);
-    // Right inner
-    const innerR = new THREE.Mesh(innerGeo, innerMat);
-    innerR.rotation.x = -Math.PI / 2;
-    innerR.position.set(STRAIGHT/2, 0.01, 0);
-    scene.add(innerR);
-    // Inner rectangle
-    const innerRect = new THREE.PlaneGeometry(STRAIGHT, (TURN_RADIUS - 2) * 2);
-    const innerRectMesh = new THREE.Mesh(innerRect, innerMat);
-    innerRectMesh.rotation.x = -Math.PI / 2;
-    innerRectMesh.position.set(0, 0.01, 0);
-    scene.add(innerRectMesh);
+    // Draw dirt track
+    for (let i = 0; i < TRACK_SEGMENTS; i++) {
+      const a = getTrackPos(i / TRACK_SEGMENTS, -TRACK_W / 2);
+      const b = getTrackPos(i / TRACK_SEGMENTS, TRACK_W / 2);
+      const c = getTrackPos((i + 1) / TRACK_SEGMENTS, -TRACK_W / 2);
+      const d2 = getTrackPos((i + 1) / TRACK_SEGMENTS, TRACK_W / 2);
 
-    // Build oval track path
-    trackPath = buildTrackPath();
-
-    // Draw the dirt track surface
-    const trackPts = [];
-    const steps = 200;
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const inner = getTrackPoint(t, -TRACK_W/2);
-      const outer = getTrackPoint(t, TRACK_W/2);
-      trackPts.push({ inner, outer });
-    }
-    // Build track as a series of quads
-    for (let i = 0; i < trackPts.length - 1; i++) {
       const geo = new THREE.BufferGeometry();
-      const a = trackPts[i], b = trackPts[i+1];
-      const verts = new Float32Array([
-        a.inner.x, 0.02, a.inner.z,
-        a.outer.x, 0.02, a.outer.z,
-        b.inner.x, 0.02, b.inner.z,
-        b.outer.x, 0.02, b.outer.z,
-        b.inner.x, 0.02, b.inner.z,
-        a.outer.x, 0.02, a.outer.z,
-      ]);
-      geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+        a.x, 0.01, a.z, b.x, 0.01, b.z, c.x, 0.01, c.z,
+        b.x, 0.01, b.z, d2.x, 0.01, d2.z, c.x, 0.01, c.z,
+      ]), 3));
       geo.computeVertexNormals();
-      const shade = 0.65 + Math.sin(i * 0.3) * 0.05;
-      const col = new THREE.Color().setRGB(shade * 0.55, shade * 0.38, shade * 0.2);
-      const mat = new THREE.MeshLambertMaterial({ color: col });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.receiveShadow = true;
-      scene.add(mesh);
+      const shade = 0.55 + Math.sin(i * 0.15) * 0.03;
+      const mat = new THREE.MeshLambertMaterial({
+        color: new THREE.Color(shade * 0.6, shade * 0.42, shade * 0.22)
+      });
+      scene.add(new THREE.Mesh(geo, mat));
     }
 
-    // Rails (inner and outer)
-    buildRail(-TRACK_W/2 - 0.5);
-    buildRail(TRACK_W/2 + 0.5);
+    // Inner rail + outer rail
+    addRail(-TRACK_W / 2 - 0.3);
+    addRail(TRACK_W / 2 + 0.3);
 
-    // Finish line — at t=0 (start of bottom straight, left side)
-    const finishT = 0;
-    for (let lane = -TRACK_W/2; lane < TRACK_W/2; lane += TRACK_W/10) {
-      const pt = getTrackPoint(finishT, lane + TRACK_W/20);
-      const sqGeo = new THREE.PlaneGeometry(1.5, TRACK_W/10);
-      const idx = Math.round((lane + TRACK_W/2) / (TRACK_W/10));
-      const sqMat = new THREE.MeshBasicMaterial({ color: idx % 2 === 0 ? 0xffffff : 0x111111 });
-      const sq = new THREE.Mesh(sqGeo, sqMat);
+    // Finish post + line
+    const fp = getTrackPos(0, TRACK_W / 2 + 1.5);
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.12, 7),
+      new THREE.MeshLambertMaterial({ color: 0xffffff })
+    );
+    post.position.set(fp.x, 3.5, fp.z);
+    scene.add(post);
+
+    // Checkered finish squares on ground
+    for (let j = 0; j < 8; j++) {
+      const lanePos = -TRACK_W / 2 + (j + 0.5) * (TRACK_W / 8);
+      const p = getTrackPos(0, lanePos);
+      const sq = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, TRACK_W / 8),
+        new THREE.MeshBasicMaterial({ color: j % 2 === 0 ? 0xffffff : 0x111111 })
+      );
       sq.rotation.x = -Math.PI / 2;
-      sq.position.set(pt.x, 0.03, pt.z);
+      sq.position.set(p.x, 0.02, p.z);
       scene.add(sq);
     }
 
-    // Finish post
-    const postPt = getTrackPoint(finishT, TRACK_W/2 + 2);
-    const postGeo = new THREE.CylinderGeometry(0.15, 0.15, 8);
-    const postMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    const post = new THREE.Mesh(postGeo, postMat);
-    post.position.set(postPt.x, 4, postPt.z);
-    post.castShadow = true;
-    scene.add(post);
-
-    // Starting gate at t ≈ 0.97 (just before finish line)
-    const gateT = 0.97;
-    const gatePt = getTrackPoint(gateT, 0);
-    const gateTan = trackPath.getTangentAt(gateT).normalize();
-    const gateNorm = new THREE.Vector3(-gateTan.z, 0, gateTan.x);
+    // Starting gate
     const gateGroup = new THREE.Group();
     gateGroup.name = 'startingGate';
-    // Gate frame
-    const frameMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
-    for (let lane = -TRACK_W/2 + 1; lane < TRACK_W/2 - 1; lane += 2) {
-      const barGeo = new THREE.BoxGeometry(0.1, 3.5, 0.1);
-      const bar = new THREE.Mesh(barGeo, frameMat);
-      bar.position.copy(gateNorm.clone().multiplyScalar(lane));
-      bar.position.y = 1.75;
+    const gateMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
+    for (let lane = -TRACK_W / 2 + 1; lane <= TRACK_W / 2 - 1; lane += 1.5) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 3, 0.08), gateMat);
+      const p = getTrackPos(0.96, lane);
+      bar.position.set(p.x, 1.5, p.z);
       gateGroup.add(bar);
     }
-    // Top beam
-    const beamGeo = new THREE.BoxGeometry(0.2, 0.2, TRACK_W - 2);
-    const beam = new THREE.Mesh(beamGeo, frameMat);
-    beam.position.y = 3.5;
+    const beamP1 = getTrackPos(0.96, -TRACK_W / 2);
+    const beamP2 = getTrackPos(0.96, TRACK_W / 2);
+    const beamLen = Math.sqrt((beamP2.x - beamP1.x) ** 2 + (beamP2.z - beamP1.z) ** 2);
+    const beam = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15, 0.15, beamLen),
+      gateMat
+    );
+    beam.position.set((beamP1.x + beamP2.x) / 2, 3, (beamP1.z + beamP2.z) / 2);
+    beam.lookAt(beamP2.x, 3, beamP2.z);
     gateGroup.add(beam);
-    gateGroup.position.copy(gatePt);
-    gateGroup.lookAt(gatePt.clone().add(gateTan));
     scene.add(gateGroup);
 
     initialized = true;
   }
 
-  function buildRail(laneOffset) {
+  function addRail(laneOffset) {
     const pts = [];
-    const steps = 100;
-    for (let i = 0; i <= steps; i++) {
-      const pt = getTrackPoint(i / steps, laneOffset);
-      pts.push(new THREE.Vector3(pt.x, 1, pt.z));
+    for (let i = 0; i <= TRACK_SEGMENTS; i++) {
+      const p = getTrackPos(i / TRACK_SEGMENTS, laneOffset);
+      pts.push(new THREE.Vector3(p.x, 0.8, p.z));
     }
-    const geo = new THREE.BufferGeometry().setFromPoints(pts);
-    scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffffff })));
-    // Posts every few segments
-    for (let i = 0; i < pts.length; i += 5) {
-      const pGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.2);
-      const p = new THREE.Mesh(pGeo, new THREE.MeshLambertMaterial({ color: 0xdddddd }));
-      p.position.set(pts[i].x, 0.6, pts[i].z);
+    scene.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: 0xffffff })
+    ));
+    for (let i = 0; i < pts.length; i += 8) {
+      const p = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.05, 1),
+        new THREE.MeshLambertMaterial({ color: 0xdddddd })
+      );
+      p.position.set(pts[i].x, 0.5, pts[i].z);
       scene.add(p);
     }
   }
@@ -234,65 +209,46 @@ const Race3D = (() => {
   function createHorse(color, laneIndex, totalLanes) {
     const group = new THREE.Group();
     const col = new THREE.Color(color);
-
     const bodyMat = new THREE.MeshLambertMaterial({ color: col });
-    const legMat = new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.65) });
+    const legMat = new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.6) });
 
     // Body
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.2, 0.9), bodyMat);
-    body.position.y = 1.8;
-    body.castShadow = true;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1, 0.7), bodyMat);
+    body.position.y = 1.6; body.castShadow = true;
     group.add(body);
 
     // Neck + head
-    const neck = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.6, 0.5), bodyMat);
-    neck.position.set(1.6, 2.5, 0);
-    neck.rotation.z = -0.5;
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.4), bodyMat);
+    neck.position.set(1.4, 2.2, 0); neck.rotation.z = -0.5;
     group.add(neck);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 0.4), bodyMat);
-    head.position.set(2.3, 2.8, 0);
-    group.add(head);
 
     // Legs
     const legs = [];
-    [[-0.7,0.3],[-0.7,-0.3],[0.7,0.3],[0.7,-0.3]].forEach(([x,z]) => {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 1.5), legMat);
-      leg.position.set(x, 0.9, z);
-      leg.castShadow = true;
-      group.add(leg);
-      legs.push(leg);
+    [[-0.6, 0.25], [-0.6, -0.25], [0.6, 0.25], [0.6, -0.25]].forEach(([x, z]) => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 1.3), legMat);
+      leg.position.set(x, 0.75, z); leg.castShadow = true;
+      group.add(leg); legs.push(leg);
     });
 
     // Jockey
-    const jockey = new THREE.Mesh(new THREE.SphereGeometry(0.28), new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(1.4) }));
-    jockey.position.set(0, 2.7, 0);
+    const jockey = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22),
+      new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(1.5) })
+    );
+    jockey.position.set(0, 2.3, 0);
     group.add(jockey);
 
-    // Number cloth
-    const canvas = document.createElement('canvas');
-    canvas.width = 64; canvas.height = 64;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,64,64);
-    ctx.fillStyle = '#000'; ctx.font = 'bold 38px Arial';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(laneIndex + 1), 32, 32);
-    const numMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.5, 0.5),
-      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas) })
-    );
-    numMesh.position.set(0, 2.1, 0.5);
-    group.add(numMesh);
-
+    // Lane position across track width
+    const laneW = TRACK_W - 4;
+    group._laneOffset = -laneW / 2 + (laneIndex / Math.max(totalLanes - 1, 1)) * laneW;
     group._legs = legs;
-    group._laneOffset = -TRACK_W/2 + 3 + ((laneIndex) / Math.max(totalLanes-1, 1)) * (TRACK_W - 6);
     group._gallopPhase = Math.random() * Math.PI * 2;
-    group._trackT = 0.97; // start at gate position
+    group._trackT = 0.96;
     scene.add(group);
     return group;
   }
 
   function updateHorses(horsesData, phase) {
-    // Create horses if needed
     while (horses3d.length < horsesData.length) {
       const i = horses3d.length;
       horses3d.push(createHorse(horsesData[i].color, i, horsesData.length));
@@ -302,65 +258,79 @@ const Race3D = (() => {
     }
 
     const isRacing = phase === 'racing';
-    let leadT = 0;
+    let leadT = 0.96;
     let leadIdx = 0;
 
     horsesData.forEach((hd, i) => {
       const h3d = horses3d[i];
-
-      // Scratched horses
       if (hd.scratched) { h3d.visible = false; return; }
 
-      // Position: 0-100 maps to 0.97 → 0.97+1.0 (full lap from gate back to gate)
+      // Map position 0-100 to track t: 0.96 → 0.96+1 (full lap)
       const pos = hd.position || 0;
-      const targetT = 0.97 + (pos / 100);
+      const targetT = 0.96 + (pos / 100);
 
       if (phase === 'loading' || phase === 'starting') {
-        h3d._trackT = 0.97;
+        h3d._trackT = 0.96;
         h3d.visible = phase === 'starting' || !!hd.gateLoaded;
       } else {
-        h3d._trackT += (targetT - h3d._trackT) * 0.25;
+        // Smooth interpolation
+        h3d._trackT += (targetT - h3d._trackT) * 0.2;
         h3d.visible = true;
       }
 
       if (h3d._trackT > leadT) { leadT = h3d._trackT; leadIdx = i; }
 
-      // Place horse on track
-      const pt = getTrackPoint(h3d._trackT % 1, h3d._laneOffset - TRACK_W/2);
-      const nextPt = getTrackPoint((h3d._trackT + 0.005) % 1, h3d._laneOffset - TRACK_W/2);
-      h3d.position.set(pt.x, 0, pt.z);
-      h3d.lookAt(nextPt.x, 0, nextPt.z);
+      // Position on track
+      const tNorm = ((h3d._trackT % 1) + 1) % 1;
+      const p = getTrackPos(tNorm, h3d._laneOffset);
+      const nextT = ((tNorm + 0.003) % 1 + 1) % 1;
+      const pNext = getTrackPos(nextT, h3d._laneOffset);
 
-      // Gallop
+      h3d.position.x = p.x;
+      h3d.position.z = p.z;
+
+      // Face direction of travel
+      const dx = pNext.x - p.x;
+      const dz = pNext.z - p.z;
+      if (dx !== 0 || dz !== 0) {
+        h3d.rotation.y = Math.atan2(dx, dz);
+      }
+
+      // Gallop animation
       if (isRacing) {
-        h3d._gallopPhase += 0.35;
+        h3d._gallopPhase += 0.3;
         const gp = h3d._gallopPhase;
-        h3d.position.y = Math.sin(gp * 2) * 0.12;
+        h3d.position.y = Math.abs(Math.sin(gp * 2)) * 0.1;
         h3d._legs.forEach((leg, li) => {
           const off = li < 2 ? 0 : Math.PI;
-          leg.rotation.x = Math.sin(gp + off) * 0.5;
-          leg.position.y = 0.9 + Math.abs(Math.sin(gp + off)) * 0.25;
+          leg.rotation.x = Math.sin(gp + off) * 0.45;
         });
+      } else {
+        h3d.position.y = 0;
       }
     });
 
     // Camera
     if (isRacing || phase === 'result') {
-      // Follow lead horse from slightly behind and above
       const leadH = horses3d[leadIdx];
       if (leadH) {
-        const behindT = (leadH._trackT - 0.04) % 1;
-        const camPt = getTrackPoint(behindT, TRACK_W + 10);
-        const targetCam = new THREE.Vector3(camPt.x, 20, camPt.z);
-        camera.position.lerp(targetCam, 0.04);
-        const lookPt = getTrackPoint((leadH._trackT + 0.02) % 1, 0);
-        camera.lookAt(lookPt.x, 1, lookPt.z);
+        // Camera behind and to the side of the leader
+        const tNorm = ((leadH._trackT % 1) + 1) % 1;
+        const behindT = ((tNorm - 0.06) % 1 + 1) % 1;
+        const camPos = getTrackPos(behindT, TRACK_W + 12);
+        const lookPos = getTrackPos(((tNorm + 0.03) % 1 + 1) % 1, 0);
+
+        camera.position.x += (camPos.x - camera.position.x) * 0.06;
+        camera.position.z += (camPos.z - camera.position.z) * 0.06;
+        camera.position.y += (15 - camera.position.y) * 0.05;
+        camera.lookAt(lookPos.x, 1, lookPos.z);
       }
-    } else if (phase === 'loading' || phase === 'starting') {
-      const gatePt = getTrackPoint(0.97, TRACK_W/2 + 15);
-      camera.position.set(gatePt.x, 10, gatePt.z);
-      const lookGate = getTrackPoint(0.97, 0);
-      camera.lookAt(lookGate.x, 2, lookGate.z);
+    } else {
+      // Gate view
+      const gp = getTrackPos(0.96, TRACK_W / 2 + 12);
+      const gl = getTrackPos(0.96, 0);
+      camera.position.set(gp.x, 8, gp.z);
+      camera.lookAt(gl.x, 1.5, gl.z);
     }
 
     // Gate visibility
@@ -378,12 +348,12 @@ const Race3D = (() => {
     if (animFrameId) cancelAnimationFrame(animFrameId);
     animFrameId = null;
     if (renderer && container) {
-      try { container.removeChild(renderer.domElement); } catch(e) {}
+      try { container.removeChild(renderer.domElement); } catch (e) {}
       renderer.dispose();
     }
     horses3d = [];
     scene = null; camera = null; renderer = null;
-    trackPath = null;
+    trackPoints = []; trackTangents = [];
     initialized = false;
   }
 

@@ -676,9 +676,10 @@ function renderTVHorseRacing(state) {
 
   // Sound triggers
   if (state.phase !== lastRacePhase) {
-    if (state.phase === 'starting') CasinoAudio.startingBell();
+    if (state.phase === 'loading') CasinoAudio.startingBell(); // bugle when loading
     if (state.phase === 'racing') CasinoAudio.gallop();
     if (state.phase === 'result') {
+      CasinoAudio.stopGallop();
       CasinoAudio.raceFinish();
       const anyWin = Object.values(state.bets || {}).some(b => b.won);
       setTimeout(() => { if (anyWin) CasinoAudio.bigWin(); }, 800);
@@ -690,6 +691,17 @@ function renderTVHorseRacing(state) {
   if (state.speak && state.speak !== lastSpokenText) {
     lastSpokenText = state.speak;
     CasinoAudio.speak(state.speak);
+  }
+
+  // Reset phase tracking on new race
+  if (state.phase === 'betting' && lastRacePhase !== 'betting') {
+    lastRacePhase = 'betting';
+    lastSpokenText = null;
+    // Dispose old 3D scene for fresh start
+    if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
+      Race3D.stopRendering();
+      Race3D.dispose();
+    }
   }
 
   // ── TAB-style betting board ──
