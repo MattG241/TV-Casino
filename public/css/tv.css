@@ -40,8 +40,9 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 40px;
+  padding: 16px 24px;
   position: relative;
+  overflow: hidden;
   background:
     radial-gradient(ellipse at 20% 50%, rgba(255,215,0,0.03) 0%, transparent 50%),
     radial-gradient(ellipse at 80% 50%, rgba(124,77,255,0.03) 0%, transparent 50%),
@@ -53,11 +54,12 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .tv-logo {
-  font-size: 48px;
+  font-size: 32px;
   font-weight: 900;
   background: linear-gradient(135deg, var(--gold), #fff8e1, var(--gold));
   background-size: 200% auto;
@@ -68,12 +70,12 @@ body {
 }
 
 .tv-room-code {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--gold);
   background: var(--bg-card);
-  padding: 12px 24px;
-  border-radius: 16px;
+  padding: 8px 16px;
+  border-radius: 12px;
   border: 2px solid var(--gold-dark);
   letter-spacing: 6px;
 }
@@ -81,22 +83,22 @@ body {
 /* ── TV Players Bar ────────────────────────────────────────────────────── */
 .tv-players {
   display: flex;
-  gap: 16px;
+  gap: 10px;
   justify-content: center;
-  padding: 16px 0;
-  margin-bottom: 16px;
+  padding: 8px 0;
+  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .tv-player {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
-  padding: 16px 24px;
+  padding: 8px 14px;
   background: var(--bg-card);
-  border-radius: 16px;
+  border-radius: 12px;
   border: 2px solid var(--border);
-  min-width: 120px;
   transition: all 0.3s;
 }
 
@@ -110,15 +112,15 @@ body {
   box-shadow: 0 0 30px rgba(0,200,83,0.3);
 }
 
-.tv-player .avatar { font-size: 40px; }
-.tv-player .name { font-size: 18px; font-weight: 700; }
-.tv-player .chips { color: var(--gold); font-size: 20px; font-weight: 800; }
+.tv-player .avatar { font-size: 28px; }
+.tv-player .name { font-size: 15px; font-weight: 700; }
+.tv-player .chips { color: var(--gold); font-size: 15px; font-weight: 800; }
 .tv-player .host-badge {
   background: var(--gold);
   color: #000;
-  padding: 2px 8px;
-  border-radius: 8px;
-  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 9px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -130,10 +132,12 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.tv-screen { display: none; width: 100%; }
-.tv-screen.active { display: flex; flex-direction: column; align-items: center; animation: fadeIn 0.5s ease; }
+.tv-screen { display: none; width: 100%; max-height: 100%; }
+.tv-screen.active { display: flex; flex-direction: column; align-items: center; animation: fadeIn 0.5s ease; overflow: hidden; }
 
 /* ── TV Waiting Screen ─────────────────────────────────────────────────── */
 .tv-waiting {
@@ -141,19 +145,19 @@ body {
 }
 
 .tv-waiting h2 {
-  font-size: 36px;
-  margin-bottom: 16px;
+  font-size: 30px;
+  margin-bottom: 12px;
 }
 
 .tv-waiting .join-instructions {
-  font-size: 24px;
+  font-size: 20px;
   color: var(--text-dim);
-  margin-bottom: 32px;
+  margin-bottom: 20px;
 }
 
 .tv-qr-placeholder {
-  width: 200px;
-  height: 200px;
+  width: 150px;
+  height: 150px;
   background: var(--bg-card);
   border-radius: 16px;
   display: flex;
@@ -163,7 +167,7 @@ body {
   border: 2px solid var(--border);
 }
 
-.tv-qr-placeholder span { font-size: 80px; }
+.tv-qr-placeholder span { font-size: 60px; }
 
 /* ── TV Roulette ───────────────────────────────────────────────────────── */
 .tv-roulette {
@@ -172,10 +176,10 @@ body {
 }
 
 .tv-roulette-wheel {
-  width: 300px;
-  height: 300px;
+  width: 200px;
+  height: 200px;
   border-radius: 50%;
-  border: 8px solid var(--gold);
+  border: 6px solid var(--gold);
   background: conic-gradient(
     #e74c3c 0deg 10deg, #1a1a2e 10deg 20deg,
     #e74c3c 20deg 30deg, #1a1a2e 30deg 40deg,
@@ -200,9 +204,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 60px rgba(255,215,0,0.2);
+  box-shadow: 0 0 40px rgba(255,215,0,0.2);
   transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
-  margin: 20px 0;
+  margin: 10px 0;
 }
 
 .tv-roulette-wheel.spinning {
@@ -210,25 +214,25 @@ body {
 }
 
 .tv-roulette-wheel .center {
-  width: 80px;
-  height: 80px;
+  width: 56px;
+  height: 56px;
   background: var(--bg-dark);
   border-radius: 50%;
-  border: 4px solid var(--gold);
+  border: 3px solid var(--gold);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 900;
 }
 
 .tv-result-display {
-  margin: 24px 0;
+  margin: 10px 0;
   text-align: center;
 }
 
 .tv-result-number {
-  font-size: 120px;
+  font-size: 80px;
   font-weight: 900;
   animation: bounceIn 0.6s ease;
 }
@@ -239,18 +243,18 @@ body {
 
 .tv-history {
   display: flex;
-  gap: 8px;
-  margin-top: 16px;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .tv-history-num {
-  width: 44px;
-  height: 44px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 800;
   color: #fff;
 }
@@ -261,22 +265,22 @@ body {
 
 .tv-bets-list {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
-  margin-top: 16px;
+  margin-top: 8px;
 }
 
 .tv-bet-card {
   background: var(--bg-card);
-  border-radius: 12px;
-  padding: 12px 20px;
+  border-radius: 10px;
+  padding: 8px 14px;
   border: 1px solid var(--border);
   text-align: center;
 }
 
-.tv-bet-card .player-name { font-size: 14px; color: var(--text-dim); }
-.tv-bet-card .bet-info { font-size: 18px; font-weight: 700; color: var(--gold); }
+.tv-bet-card .player-name { font-size: 12px; color: var(--text-dim); }
+.tv-bet-card .bet-info { font-size: 15px; font-weight: 700; color: var(--gold); }
 
 /* ── TV Slots ──────────────────────────────────────────────────────────── */
 .tv-slots {
@@ -286,32 +290,32 @@ body {
 
 .tv-slots-machine {
   background: linear-gradient(135deg, #1a1a3e, #141428);
-  border: 4px solid var(--gold);
-  border-radius: 24px;
-  padding: 40px;
-  box-shadow: 0 0 60px rgba(255,215,0,0.15);
+  border: 3px solid var(--gold);
+  border-radius: 20px;
+  padding: 20px 30px;
+  box-shadow: 0 0 40px rgba(255,215,0,0.15);
 }
 
 .tv-slots-title {
-  font-size: 36px;
+  font-size: 28px;
   font-weight: 900;
   color: var(--gold);
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 12px;
   text-shadow: 0 0 20px rgba(255,215,0,0.3);
 }
 
 .tv-reels {
   display: flex;
   justify-content: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .tv-reel {
-  width: 140px;
-  height: 360px;
+  width: 120px;
+  height: 240px;
   background: var(--bg-dark);
-  border-radius: 16px;
+  border-radius: 12px;
   border: 3px solid var(--border);
   overflow: hidden;
   display: flex;
@@ -321,12 +325,12 @@ body {
 }
 
 .tv-slot-symbol {
-  font-size: 64px;
-  padding: 12px;
+  font-size: 48px;
+  padding: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 120px;
+  height: 80px;
 }
 
 .tv-slot-symbol.middle {
@@ -337,8 +341,8 @@ body {
 
 .tv-win-display {
   text-align: center;
-  margin-top: 24px;
-  font-size: 48px;
+  margin-top: 12px;
+  font-size: 36px;
   font-weight: 900;
   color: var(--gold);
   animation: pulse 0.5s ease 3;
@@ -351,22 +355,22 @@ body {
 
 .tv-bj-table {
   background: linear-gradient(135deg, #0d5c2e, #0a4a24);
-  border-radius: 24px;
-  padding: 32px;
-  border: 4px solid #1a7a42;
+  border-radius: 20px;
+  padding: 20px 24px;
+  border: 3px solid #1a7a42;
   width: 100%;
 }
 
 .tv-dealer-area, .tv-players-area {
-  margin: 16px 0;
+  margin: 8px 0;
 }
 
 .tv-hand-label {
-  font-size: 18px;
+  font-size: 15px;
   color: rgba(255,255,255,0.6);
   text-transform: uppercase;
   letter-spacing: 2px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .tv-cards-row {
@@ -376,17 +380,17 @@ body {
 }
 
 .tv-card {
-  width: 80px;
-  height: 112px;
+  width: 56px;
+  height: 78px;
   background: #fff;
-  border-radius: 10px;
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 800;
-  box-shadow: 4px 4px 12px rgba(0,0,0,0.4);
+  box-shadow: 3px 3px 8px rgba(0,0,0,0.4);
   animation: fadeIn 0.3s ease;
 }
 
@@ -404,32 +408,32 @@ body {
   font-size: 36px;
 }
 
-.tv-card .card-rank { font-size: 22px; }
-.tv-card .card-suit { font-size: 18px; }
+.tv-card .card-rank { font-size: 17px; }
+.tv-card .card-suit { font-size: 14px; }
 
 .tv-hand-value {
   display: inline-block;
   background: rgba(0,0,0,0.5);
-  padding: 6px 14px;
-  border-radius: 16px;
-  font-size: 20px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 16px;
   font-weight: 800;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .tv-player-hands {
   display: flex;
-  gap: 24px;
+  gap: 16px;
   flex-wrap: wrap;
   justify-content: center;
 }
 
 .tv-player-hand {
   background: rgba(0,0,0,0.2);
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 10px;
   border: 2px solid transparent;
-  min-width: 180px;
+  min-width: 140px;
 }
 
 .tv-player-hand.active {
@@ -442,9 +446,9 @@ body {
 
 .tv-bj-result {
   text-align: center;
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 900;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 /* ── TV Poker ──────────────────────────────────────────────────────────── */
@@ -455,10 +459,10 @@ body {
 .tv-poker-table {
   background: linear-gradient(135deg, #0d4c2c, #0a3a20);
   border-radius: 50%;
-  padding: 48px;
-  border: 6px solid #1a6a38;
+  padding: 24px 32px;
+  border: 4px solid #1a6a38;
   width: 90%;
-  max-width: 900px;
+  max-width: 800px;
   aspect-ratio: 16/9;
   display: flex;
   flex-direction: column;
@@ -466,38 +470,38 @@ body {
   justify-content: center;
   position: relative;
   margin: 0 auto;
-  box-shadow: 0 0 80px rgba(0,0,0,0.5);
+  box-shadow: 0 0 60px rgba(0,0,0,0.5);
 }
 
 .tv-community-cards {
   display: flex;
-  gap: 10px;
-  margin: 16px 0;
+  gap: 8px;
+  margin: 8px 0;
 }
 
 .tv-pot {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 900;
   color: var(--gold);
-  margin: 12px 0;
+  margin: 6px 0;
 }
 
 .tv-poker-players {
   display: flex;
-  gap: 16px;
+  gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
-  margin-top: 16px;
+  margin-top: 8px;
   width: 100%;
 }
 
 .tv-poker-seat {
   background: rgba(0,0,0,0.3);
-  border-radius: 16px;
-  padding: 12px 16px;
+  border-radius: 12px;
+  padding: 8px 12px;
   border: 2px solid transparent;
   text-align: center;
-  min-width: 140px;
+  min-width: 110px;
 }
 
 .tv-poker-seat.active { border-color: var(--gold); }
@@ -511,8 +515,8 @@ body {
 
 .tv-race-track {
   background: var(--bg-card);
-  border-radius: 24px;
-  padding: 24px;
+  border-radius: 16px;
+  padding: 14px 18px;
   border: 2px solid var(--border);
   width: 100%;
 }
@@ -520,32 +524,32 @@ body {
 .tv-horse-lane {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 0;
+  gap: 12px;
+  padding: 6px 0;
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .tv-horse-lane:last-child { border-bottom: none; }
 
 .tv-horse-info {
-  min-width: 140px;
+  min-width: 110px;
 }
 
 .tv-horse-name {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .tv-horse-odds {
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .tv-track-lane {
   flex: 1;
-  height: 48px;
+  height: 36px;
   background: var(--bg-dark);
-  border-radius: 24px;
+  border-radius: 18px;
   position: relative;
   overflow: hidden;
 }
@@ -555,7 +559,7 @@ body {
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 36px;
+  font-size: 28px;
   transition: left 0.1s linear;
 }
 
@@ -578,19 +582,19 @@ body {
 
 .tv-race-result {
   text-align: center;
-  font-size: 36px;
+  font-size: 28px;
   font-weight: 900;
-  margin-top: 24px;
+  margin-top: 12px;
   animation: bounceIn 0.6s ease;
 }
 
 /* ── TV Timer ──────────────────────────────────────────────────────────── */
 .tv-timer {
-  font-size: 64px;
+  font-size: 48px;
   font-weight: 900;
   color: var(--gold);
   text-align: center;
-  margin: 16px 0;
+  margin: 6px 0;
 }
 
 .tv-timer.urgent { color: var(--red); animation: pulse 0.5s infinite; }
@@ -598,9 +602,9 @@ body {
 /* ── TV Status ─────────────────────────────────────────────────────────── */
 .tv-status {
   text-align: center;
-  font-size: 28px;
+  font-size: 22px;
   color: var(--text-dim);
-  margin: 16px 0;
+  margin: 6px 0;
 }
 
 /* ── Confetti ──────────────────────────────────────────────────────────── */
