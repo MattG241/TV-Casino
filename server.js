@@ -136,8 +136,9 @@ const games = {
   // ── ROULETTE ──
   roulette: {
     start(room) {
+      if (room.currentGame !== 'roulette') return;
       room.gameState = {
-        phase: 'betting', // betting -> spinning -> result
+        phase: 'betting',
         bets: {},
         result: null,
         timer: 20,
@@ -147,49 +148,43 @@ const games = {
       startBettingTimer(room, 20);
     },
     placeBet(room, playerId, bet) {
-      if (room.gameState.phase !== 'betting') return;
+      if (!room.gameState || room.gameState.phase !== 'betting') return;
       const player = room.players.find(p => p.id === playerId);
       if (!player) return;
-      // Validate bet amount
       const amount = parseInt(bet.amount);
       if (!amount || amount <= 0 || amount > player.chips) return;
       bet.amount = amount;
-      // Cap at 10 bets per player per round
       if (!room.gameState.bets[playerId]) room.gameState.bets[playerId] = [];
       if (room.gameState.bets[playerId].length >= 10) return;
       room.gameState.bets[playerId].push(bet);
       player.chips -= amount;
-      // Throttle broadcasts - max once per 200ms
+      // Throttle broadcasts
       clearTimeout(room._betBroadcastTimeout);
       room._betBroadcastTimeout = setTimeout(() => {
+        if (room.currentGame !== 'roulette' || !room.gameState || room.gameState.phase !== 'betting') return;
         broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
         broadcastToRoom(room, 'players:update', playerList(room));
       }, 200);
     },
     spin(room) {
-      if (room.gameState.phase === 'spinning') return; // prevent double-spin
+      if (!room.gameState || room.gameState.phase !== 'betting') return;
+      // Cancel any pending bet broadcast
+      clearTimeout(room._betBroadcastTimeout);
       room.gameState.phase = 'spinning';
       room.gameState.timer = null;
-      const number = Math.floor(Math.random() * 37); // 0-36
+      const number = Math.floor(Math.random() * 37);
       const RED = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
       const color = number === 0 ? 'green' : RED.includes(number) ? 'red' : 'black';
       console.log(`[ROULETTE] Spinning... result will be ${number} ${color}`);
       broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
 
-      // Store the spin result and a reference to this gameState
       const spinState = room.gameState;
 
       setTimeout(() => {
-        // Use the stored reference to ensure we update the right state
-        if (room.gameState !== spinState) {
-          console.log('[ROULETTE] gameState was replaced, skipping result');
-          return;
-        }
-        console.log(`[ROULETTE] Showing result: ${number} ${color}`);
+        if (room.gameState !== spinState || room.currentGame !== 'roulette') return;
         room.gameState.phase = 'result';
         room.gameState.result = { number, color };
 
-        // Calculate winnings
         for (const [pid, bets] of Object.entries(room.gameState.bets)) {
           const player = room.players.find(p => p.id === pid);
           if (!player) continue;
@@ -213,10 +208,9 @@ const games = {
         if (room.gameState.history.length > 20) room.gameState.history.pop();
         broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
         broadcastToRoom(room, 'players:update', playerList(room));
-        console.log(`[ROULETTE] Result broadcast complete. Next round in 5s.`);
 
         setTimeout(() => {
-          if (room.gameState === spinState) {
+          if (room.gameState === spinState && room.currentGame === 'roulette') {
             games.roulette.start(room);
           }
         }, 5000);
@@ -286,6 +280,7 @@ const games = {
   // ── BLACKJACK ──
   blackjack: {
     start(room) {
+      if (room.currentGame !== 'blackjack') return;
       room.gameState = {
         phase: 'betting',
         deck: createDeck(),
@@ -299,17 +294,19 @@ const games = {
       broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(room.gameState) });
     },
     placeBet(room, playerId, amount) {
-      if (room.gameState.phase !== 'betting') return;
+      if (!room.gameState || room.gameState.phase !== 'betting') return;
       const player = room.players.find(p => p.id === playerId);
-      if (!player || amount > player.chips || amount <= 0) return;
+      amount = parseInt(amount);
+      if (!player || !amount || amount <= 0 || amount > player.chips) return;
+      if (room.gameState.bets[playerId]) return; // already bet
       player.chips -= amount;
       room.gameState.bets[playerId] = amount;
       broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(room.gameState) });
       broadcastToRoom(room, 'players:update', playerList(room));
 
-      // Auto-deal if all players have bet
-      const activePlayers = room.players.filter(p => p.chips >= 0);
-      if (Object.keys(room.gameState.bets).length >= activePlayers.length) {
+      // Auto-deal if all players with chips have bet
+      const playersWithChips = room.players.filter(p => p.chips > 0 || room.gameState.bets[p.id]);
+      if (Object.keys(room.gameState.bets).length >= playersWithChips.length) {
         this.deal(room);
       }
     },
@@ -347,14 +344,14 @@ const games = {
     },
     hit(room, playerId) {
       const gs = room.gameState;
-      if (gs.phase !== 'playing' || gs.turnOrder[gs.currentTurn] !== playerId) return;
+      if (!gs || gs.phase !== 'playing' || gs.turnOrder[gs.currentTurn] !== playerId) return;
       gs.hands[playerId].push(gs.deck.pop());
       if (handValue(gs.hands[playerId]) > 21) {
         gs.results[playerId] = 'bust';
         gs.currentTurn++;
         this.advanceTurn(room);
       } else if (handValue(gs.hands[playerId]) === 21) {
-        gs.results[playerId] = '21';
+        // Stand automatically on 21
         gs.currentTurn++;
         this.advanceTurn(room);
       } else {
@@ -363,13 +360,13 @@ const games = {
     },
     stand(room, playerId) {
       const gs = room.gameState;
-      if (gs.phase !== 'playing' || gs.turnOrder[gs.currentTurn] !== playerId) return;
+      if (!gs || gs.phase !== 'playing' || gs.turnOrder[gs.currentTurn] !== playerId) return;
       gs.currentTurn++;
       this.advanceTurn(room);
     },
     doubleDown(room, playerId) {
       const gs = room.gameState;
-      if (gs.phase !== 'playing' || gs.turnOrder[gs.currentTurn] !== playerId) return;
+      if (!gs || gs.phase !== 'playing' || gs.turnOrder[gs.currentTurn] !== playerId) return;
       const player = room.players.find(p => p.id === playerId);
       if (!player || player.chips < gs.bets[playerId]) return;
       player.chips -= gs.bets[playerId];
@@ -427,13 +424,16 @@ const games = {
       broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(gs, true) });
       broadcastToRoom(room, 'players:update', playerList(room));
 
-      setTimeout(() => games.blackjack.start(room), 5000);
+      setTimeout(() => {
+        if (room.currentGame === 'blackjack') games.blackjack.start(room);
+      }, 5000);
     },
   },
 
   // ── POKER (Texas Hold'em) ──
   poker: {
     start(room) {
+      if (room.currentGame !== 'poker') return;
       const activePlayers = room.players.filter(p => p.chips > 0).map(p => p.id);
       if (activePlayers.length < 2) {
         broadcastToRoom(room, 'game:error', { message: 'Need at least 2 players for poker' });
@@ -490,7 +490,8 @@ const games = {
     },
     action(room, playerId, action, amount) {
       const gs = room.gameState;
-      if (!gs || gs.turnOrder[gs.currentTurn] !== playerId) return;
+      if (!gs || gs.phase === 'result' || gs.phase === 'showdown') return;
+      if (gs.turnOrder[gs.currentTurn] !== playerId) return;
       const player = room.players.find(p => p.id === playerId);
       if (!player) return;
 
@@ -544,7 +545,7 @@ const games = {
       });
       const allMatched = activeBettors.every(pid => (gs.roundBets[pid] || 0) >= gs.currentBet);
 
-      if (allMatched && loops >= gs.turnOrder.length - gs.foldedPlayers.length - 1 || activeBettors.length === 0) {
+      if ((allMatched && loops >= gs.turnOrder.length - gs.foldedPlayers.length - 1) || activeBettors.length === 0) {
         this.nextPhase(room);
       } else {
         broadcastPlayerHands(room);
@@ -555,7 +556,16 @@ const games = {
       const gs = room.gameState;
       gs.roundBets = {};
       gs.currentBet = 0;
+      // Start from first non-folded, non-allin player
       gs.currentTurn = 0;
+      for (let i = 0; i < gs.turnOrder.length; i++) {
+        const pid = gs.turnOrder[i];
+        const p = room.players.find(p2 => p2.id === pid);
+        if (!gs.foldedPlayers.includes(pid) && p && p.chips > 0) {
+          gs.currentTurn = i;
+          break;
+        }
+      }
 
       if (gs.phase === 'preflop') {
         gs.phase = 'flop';
@@ -581,11 +591,12 @@ const games = {
       gs.phase = 'showdown';
       let bestRank = -1;
       let winner = null;
+      gs.handResults = {};
 
       for (const pid of gs.activePlayers) {
         const allCards = [...gs.hands[pid], ...gs.community];
         const result = evaluatePokerHand(allCards);
-        gs.hands[pid].result = result;
+        gs.handResults[pid] = result;
         if (result.rank > bestRank) {
           bestRank = result.rank;
           winner = pid;
@@ -610,13 +621,16 @@ const games = {
       });
       broadcastToRoom(room, 'players:update', playerList(room));
 
-      setTimeout(() => games.poker.start(room), 5000);
+      setTimeout(() => {
+        if (room.currentGame === 'poker') games.poker.start(room);
+      }, 5000);
     },
   },
 
   // ── HORSE RACING ──
   horseracing: {
     start(room) {
+      if (room.currentGame !== 'horseracing') return;
       const horses = [
         { id: 1, name: 'Thunder Bolt', color: '#e74c3c', odds: 3, position: 0 },
         { id: 2, name: 'Silver Arrow', color: '#3498db', odds: 4, position: 0 },
@@ -636,9 +650,11 @@ const games = {
       startBettingTimer(room, 15);
     },
     placeBet(room, playerId, horseId, amount) {
-      if (room.gameState.phase !== 'betting') return;
+      if (!room.gameState || room.gameState.phase !== 'betting') return;
       const player = room.players.find(p => p.id === playerId);
-      if (!player || amount > player.chips || amount <= 0) return;
+      amount = parseInt(amount);
+      if (!player || !amount || amount <= 0 || amount > player.chips) return;
+      if (room.gameState.bets[playerId]) return; // already bet
       player.chips -= amount;
       room.gameState.bets[playerId] = { horseId, amount };
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
@@ -646,13 +662,21 @@ const games = {
     },
     race(room) {
       const gs = room.gameState;
+      if (!gs) return;
       gs.phase = 'racing';
       broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
 
+      // Clear any existing race interval
+      if (room._raceInterval) clearInterval(room._raceInterval);
+
       const interval = setInterval(() => {
+        if (room.currentGame !== 'horseracing' || !room.gameState || room.gameState !== gs) {
+          clearInterval(interval);
+          room._raceInterval = null;
+          return;
+        }
         let finished = false;
         for (const horse of gs.horses) {
-          // Each horse has a speed based loosely on odds (lower odds = slightly faster)
           const baseSpeed = 2 + Math.random() * 4;
           const oddsBonus = (12 - horse.odds) * 0.15;
           horse.position += baseSpeed + oddsBonus + (Math.random() * 2 - 1);
@@ -668,9 +692,9 @@ const games = {
 
         if (finished) {
           clearInterval(interval);
+          room._raceInterval = null;
           gs.phase = 'result';
 
-          // Payouts
           for (const [pid, bet] of Object.entries(gs.bets)) {
             const player = room.players.find(p => p.id === pid);
             if (!player) continue;
@@ -684,9 +708,12 @@ const games = {
           broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
           broadcastToRoom(room, 'players:update', playerList(room));
 
-          setTimeout(() => games.horseracing.start(room), 5000);
+          setTimeout(() => {
+            if (room.currentGame === 'horseracing') games.horseracing.start(room);
+          }, 5000);
         }
       }, 100);
+      room._raceInterval = interval;
     },
   },
 };
@@ -920,11 +947,16 @@ io.on('connection', (socket) => {
     });
     // When all players are ready, end the game and go to voting
     if (currentRoom.readyPlayers.size >= currentRoom.players.length) {
-      // Clear any game timers
+      // Clear all game timers and intervals
       if (currentRoom._timerInterval) {
         clearInterval(currentRoom._timerInterval);
         currentRoom._timerInterval = null;
       }
+      if (currentRoom._raceInterval) {
+        clearInterval(currentRoom._raceInterval);
+        currentRoom._raceInterval = null;
+      }
+      clearTimeout(currentRoom._betBroadcastTimeout);
       currentRoom.currentGame = null;
       currentRoom.gameState = null;
       currentRoom.votes = {};
@@ -1003,6 +1035,8 @@ io.on('connection', (socket) => {
     if (currentRoom.players.length === 0 && !currentRoom.tvSocket) {
       if (currentRoom._timerInterval) clearInterval(currentRoom._timerInterval);
       if (currentRoom._voteTimerInterval) clearInterval(currentRoom._voteTimerInterval);
+      if (currentRoom._raceInterval) clearInterval(currentRoom._raceInterval);
+      clearTimeout(currentRoom._betBroadcastTimeout);
       rooms.delete(currentRoom.code);
     } else {
       if (currentRoom.hostId === playerId && currentRoom.players.length > 0) {
