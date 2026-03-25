@@ -72,6 +72,7 @@ function playerList(room) {
     chips: p.chips,
     isHost: p.id === room.hostId,
     avatar: p.avatar,
+    isAI: p.isAI || false,
   }));
 }
 
@@ -112,12 +113,22 @@ function handValue(hand) {
 // ── Poker Helpers ───────────────────────────────────────────────────────────
 
 function evaluatePokerHand(cards) {
-  if (cards.length < 5) return { rank: 0, name: 'Incomplete' };
+  if (cards.length < 5) return { rank: 0, name: 'Incomplete', kickers: [] };
   const allCombos = getCombinations(cards, 5);
-  let best = { rank: 0, name: 'High Card', kickers: [] };
+  let best = { rank: -1, name: 'High Card', kickers: [] };
   for (const combo of allCombos) {
     const result = evaluateFiveCards(combo);
-    if (result.rank > best.rank) best = result;
+    if (result.rank > best.rank) {
+      best = result;
+    } else if (result.rank === best.rank) {
+      // Compare kickers for same rank
+      const rk = result.kickers || [];
+      const bk = best.kickers || [];
+      for (let i = 0; i < Math.max(rk.length, bk.length); i++) {
+        if ((rk[i] || 0) > (bk[i] || 0)) { best = result; break; }
+        if ((rk[i] || 0) < (bk[i] || 0)) break;
+      }
+    }
   }
   return best;
 }
@@ -138,23 +149,29 @@ function evaluateFiveCards(cards) {
   const suits = cards.map(c => c.suit);
 
   const isFlush = suits.every(s => s === suits[0]);
-  const isStraight = values.every((v, i) => i === 0 || values[i-1] - v === 1)
-    || (values[0] === 12 && values[1] === 3 && values[2] === 2 && values[3] === 1 && values[4] === 0);
+  const isWheel = values[0] === 12 && values[1] === 3 && values[2] === 2 && values[3] === 1 && values[4] === 0;
+  const isStraight = values.every((v, i) => i === 0 || values[i-1] - v === 1) || isWheel;
+  const straightHigh = isWheel ? 3 : values[0]; // A-2-3-4-5 straight high is 5 (index 3)
 
   const counts = {};
   values.forEach(v => counts[v] = (counts[v] || 0) + 1);
-  const groups = Object.entries(counts).sort((a, b) => b[1] - a[1] || b[0] - a[0]);
+  const groups = Object.entries(counts)
+    .map(([v, c]) => [parseInt(v), c])
+    .sort((a, b) => b[1] - a[1] || b[0] - a[0]);
 
-  if (isFlush && isStraight && values[0] === 12) return { rank: 9, name: 'Royal Flush' };
-  if (isFlush && isStraight) return { rank: 8, name: 'Straight Flush' };
-  if (groups[0][1] === 4) return { rank: 7, name: 'Four of a Kind' };
-  if (groups[0][1] === 3 && groups[1][1] === 2) return { rank: 6, name: 'Full House' };
-  if (isFlush) return { rank: 5, name: 'Flush' };
-  if (isStraight) return { rank: 4, name: 'Straight' };
-  if (groups[0][1] === 3) return { rank: 3, name: 'Three of a Kind' };
-  if (groups[0][1] === 2 && groups[1][1] === 2) return { rank: 2, name: 'Two Pair' };
-  if (groups[0][1] === 2) return { rank: 1, name: 'One Pair' };
-  return { rank: 0, name: 'High Card' };
+  // Kickers: sorted by group count desc, then value desc
+  const kickers = groups.map(g => g[0]);
+
+  if (isFlush && isStraight && values[0] === 12 && values[1] === 11) return { rank: 9, name: 'Royal Flush', kickers: [12] };
+  if (isFlush && isStraight) return { rank: 8, name: 'Straight Flush', kickers: [straightHigh] };
+  if (groups[0][1] === 4) return { rank: 7, name: 'Four of a Kind', kickers };
+  if (groups[0][1] === 3 && groups[1][1] === 2) return { rank: 6, name: 'Full House', kickers };
+  if (isFlush) return { rank: 5, name: 'Flush', kickers: values };
+  if (isStraight) return { rank: 4, name: 'Straight', kickers: [straightHigh] };
+  if (groups[0][1] === 3) return { rank: 3, name: 'Three of a Kind', kickers };
+  if (groups[0][1] === 2 && groups[1][1] === 2) return { rank: 2, name: 'Two Pair', kickers };
+  if (groups[0][1] === 2) return { rank: 1, name: 'One Pair', kickers };
+  return { rank: 0, name: 'High Card', kickers: values };
 }
 
 // ── Horse Name Generator ────────────────────────────────────────────────────
@@ -553,8 +570,184 @@ const games = {
 
   // ── POKER (Texas Hold'em) ──
   poker: {
+    // ── AI PLAYER NAMES & PERSONALITIES ──
+    AI_NAMES: ['Ace McGraw', 'Lucky Lou', 'Poker Pete', 'Card Shark', 'Bluff King', 'The Dealer', 'Wild Card', 'High Roller'],
+    AI_AVATARS: [6, 7, 8, 9, 10, 11, 12, 13],
+
+    // Add AI player to room if only 1 human player
+    ensureAIPlayer(room) {
+      const humanPlayers = room.players.filter(p => !p.isAI && p.chips > 0);
+      const aiPlayers = room.players.filter(p => p.isAI);
+      if (humanPlayers.length === 1 && aiPlayers.length === 0) {
+        const nameIdx = Math.floor(Math.random() * this.AI_NAMES.length);
+        const aiPlayer = {
+          id: 'ai-' + uuidv4().slice(0, 8),
+          name: this.AI_NAMES[nameIdx],
+          chips: 1000,
+          avatar: this.AI_AVATARS[nameIdx % this.AI_AVATARS.length],
+          isAI: true,
+          socket: null,
+          // AI personality: aggression 0-1, bluffFreq 0-1, tightness 0-1
+          aiPersonality: {
+            aggression: 0.3 + Math.random() * 0.5,
+            bluffFreq: 0.1 + Math.random() * 0.2,
+            tightness: 0.3 + Math.random() * 0.4,
+          },
+        };
+        room.players.push(aiPlayer);
+        broadcastToRoom(room, 'players:update', playerList(room));
+        console.log(`[POKER] AI player "${aiPlayer.name}" joined room ${room.code}`);
+      }
+    },
+
+    // Remove AI players when multiple humans are present
+    removeAIPlayers(room) {
+      const humanPlayers = room.players.filter(p => !p.isAI);
+      if (humanPlayers.length >= 2) {
+        room.players = room.players.filter(p => !p.isAI);
+        broadcastToRoom(room, 'players:update', playerList(room));
+      }
+    },
+
+    // Evaluate AI hand strength (0-1 scale)
+    evaluateAIHandStrength(holeCards, communityCards) {
+      if (communityCards.length === 0) {
+        // Preflop: evaluate hole cards only
+        return this.preflopStrength(holeCards);
+      }
+      // Postflop: evaluate best hand from available cards
+      const allCards = [...holeCards, ...communityCards];
+      const result = evaluatePokerHand(allCards);
+      // Normalize rank 0-9 to 0-1, with bonus for higher sub-ranks
+      return Math.min(1, (result.rank / 9) * 0.8 + 0.2);
+    },
+
+    preflopStrength(cards) {
+      const rankOrder = '23456789TJQKA';
+      const r1 = rankOrder.indexOf(cards[0].rank === '10' ? 'T' : cards[0].rank);
+      const r2 = rankOrder.indexOf(cards[1].rank === '10' ? 'T' : cards[1].rank);
+      const high = Math.max(r1, r2);
+      const low = Math.min(r1, r2);
+      const isPair = r1 === r2;
+      const isSuited = cards[0].suit === cards[1].suit;
+      const gap = high - low;
+
+      let strength = 0;
+      if (isPair) {
+        strength = 0.5 + (high / 12) * 0.5; // Pairs: 0.5-1.0
+      } else {
+        strength = (high + low) / 24; // Base from card ranks
+        if (isSuited) strength += 0.06;
+        if (gap <= 2) strength += 0.04; // Connected cards
+        if (high >= 10) strength += 0.08; // Broadway cards
+      }
+      return Math.min(1, Math.max(0, strength));
+    },
+
+    // AI decision-making
+    getAIAction(room, aiPlayer) {
+      const gs = room.gameState;
+      const hand = gs.hands[aiPlayer.id];
+      const personality = aiPlayer.aiPersonality;
+      const handStrength = this.evaluateAIHandStrength(hand, gs.community);
+      const currentPlayerBet = gs.roundBets[aiPlayer.id] || 0;
+      const toCall = gs.currentBet - currentPlayerBet;
+      const potOdds = toCall > 0 ? toCall / (gs.pot + toCall) : 0;
+
+      // Add some randomness to make AI less predictable
+      const noise = (Math.random() - 0.5) * 0.15;
+      const effectiveStrength = Math.min(1, Math.max(0, handStrength + noise));
+
+      // Decision logic
+      if (toCall === 0) {
+        // No bet to call - check or raise
+        if (effectiveStrength > 0.7 + (1 - personality.aggression) * 0.2) {
+          // Strong hand - raise
+          const raiseSize = Math.floor(gs.pot * (0.5 + personality.aggression * 0.5));
+          const raiseTotal = gs.currentBet + Math.max(gs.bigBlind, raiseSize);
+          return { action: 'raise', amount: Math.min(raiseTotal, aiPlayer.chips + currentPlayerBet) };
+        }
+        if (effectiveStrength > 0.4 && Math.random() < personality.bluffFreq) {
+          // Medium hand with bluff attempt
+          const raiseTotal = gs.currentBet + gs.bigBlind * 2;
+          return { action: 'raise', amount: Math.min(raiseTotal, aiPlayer.chips + currentPlayerBet) };
+        }
+        return { action: 'check' };
+      }
+
+      // There's a bet to call
+      if (effectiveStrength > 0.8) {
+        // Very strong hand - raise
+        if (Math.random() < personality.aggression) {
+          if (effectiveStrength > 0.9 && aiPlayer.chips <= gs.pot * 1.5) {
+            return { action: 'allin' };
+          }
+          const raiseTotal = gs.currentBet + Math.floor(gs.pot * (0.5 + personality.aggression));
+          return { action: 'raise', amount: Math.min(raiseTotal, aiPlayer.chips + currentPlayerBet) };
+        }
+        return { action: 'call' };
+      }
+
+      if (effectiveStrength > 0.5) {
+        // Decent hand - call if pot odds are right
+        if (potOdds < effectiveStrength * 0.8) {
+          return { action: 'call' };
+        }
+        // Occasionally bluff-raise
+        if (Math.random() < personality.bluffFreq * 0.5) {
+          const raiseTotal = gs.currentBet + gs.bigBlind * 2;
+          return { action: 'raise', amount: Math.min(raiseTotal, aiPlayer.chips + currentPlayerBet) };
+        }
+        return { action: 'call' };
+      }
+
+      if (effectiveStrength > 0.3) {
+        // Marginal hand - call small bets, fold big ones
+        if (toCall <= gs.bigBlind * 2) return { action: 'call' };
+        if (Math.random() < personality.bluffFreq) return { action: 'call' };
+        return { action: 'fold' };
+      }
+
+      // Weak hand - mostly fold, occasional bluff
+      if (Math.random() < personality.bluffFreq * 0.3) {
+        const raiseTotal = gs.currentBet + gs.bigBlind * 3;
+        return { action: 'raise', amount: Math.min(raiseTotal, aiPlayer.chips + currentPlayerBet) };
+      }
+      if (toCall <= gs.bigBlind && Math.random() < 0.3) return { action: 'call' };
+      return { action: 'fold' };
+    },
+
+    // Schedule AI action with a natural delay
+    scheduleAIAction(room) {
+      const gs = room.gameState;
+      if (!gs || gs.phase === 'result' || gs.phase === 'showdown') return;
+      const currentPlayerId = gs.turnOrder[gs.currentTurn];
+      const aiPlayer = room.players.find(p => p.id === currentPlayerId && p.isAI);
+      if (!aiPlayer) return;
+
+      // Clear any existing AI timer
+      if (room._aiActionTimer) clearTimeout(room._aiActionTimer);
+
+      // Delay 1-3 seconds to feel natural
+      const delay = 1000 + Math.random() * 2000;
+      room._aiActionTimer = setTimeout(() => {
+        // Verify still AI's turn
+        if (!room.gameState || room.gameState.phase === 'result' || room.gameState.phase === 'showdown') return;
+        if (room.gameState.turnOrder[room.gameState.currentTurn] !== aiPlayer.id) return;
+
+        const decision = this.getAIAction(room, aiPlayer);
+        console.log(`[POKER AI] ${aiPlayer.name}: ${decision.action}${decision.amount ? ' $' + decision.amount : ''}`);
+        this.action(room, aiPlayer.id, decision.action, decision.amount);
+      }, delay);
+    },
+
     start(room) {
       if (room.currentGame !== 'poker') return;
+
+      // Add AI if only 1 human player, remove if 2+
+      this.ensureAIPlayer(room);
+      this.removeAIPlayers(room);
+
       const activePlayers = room.players.filter(p => p.chips > 0).map(p => p.id);
       if (activePlayers.length < 2) {
         broadcastToRoom(room, 'game:error', { message: 'Need at least 2 players for poker' });
@@ -566,6 +759,7 @@ const games = {
         hands[pid] = [deck.pop(), deck.pop()];
       });
 
+      const prevDealerIdx = room.gameState?.dealerIdx;
       room.gameState = {
         phase: 'preflop',
         deck,
@@ -581,13 +775,19 @@ const games = {
         roundBets: {},
         smallBlind: 10,
         bigBlind: 20,
-        dealerIdx: room.gameState?.dealerIdx != null ? (room.gameState.dealerIdx + 1) % activePlayers.length : 0,
+        dealerIdx: prevDealerIdx != null ? (prevDealerIdx + 1) % activePlayers.length : 0,
+        lastRaiser: null,
+        hasActed: {},
       };
 
       // Post blinds
       const gs = room.gameState;
-      const sbIdx = (gs.dealerIdx + 1) % gs.turnOrder.length;
-      const bbIdx = (gs.dealerIdx + 2) % gs.turnOrder.length;
+
+      // Heads-up rule: dealer posts SB and acts first preflop, BB acts second
+      const isHeadsUp = gs.turnOrder.length === 2;
+      const sbIdx = isHeadsUp ? gs.dealerIdx : (gs.dealerIdx + 1) % gs.turnOrder.length;
+      const bbIdx = isHeadsUp ? (gs.dealerIdx + 1) % gs.turnOrder.length : (gs.dealerIdx + 2) % gs.turnOrder.length;
+
       const sbPlayer = room.players.find(p => p.id === gs.turnOrder[sbIdx]);
       const bbPlayer = room.players.find(p => p.id === gs.turnOrder[bbIdx]);
 
@@ -604,11 +804,21 @@ const games = {
         gs.roundBets[gs.turnOrder[bbIdx]] = bbAmount;
         gs.currentBet = bbAmount;
       }
-      gs.currentTurn = (bbIdx + 1) % gs.turnOrder.length;
+
+      // Preflop: action starts left of BB (or SB in heads-up since dealer=SB acts first)
+      if (isHeadsUp) {
+        gs.currentTurn = sbIdx; // Dealer/SB acts first preflop in heads-up
+      } else {
+        gs.currentTurn = (bbIdx + 1) % gs.turnOrder.length;
+      }
 
       broadcastPlayerHands(room);
       broadcastToRoom(room, 'players:update', playerList(room));
+
+      // Trigger AI if it's AI's turn
+      this.scheduleAIAction(room);
     },
+
     action(room, playerId, action, amount) {
       const gs = room.gameState;
       if (!gs || gs.phase === 'result' || gs.phase === 'showdown') return;
@@ -637,6 +847,7 @@ const games = {
         gs.pot += raiseAmount;
         gs.roundBets[playerId] = raiseTotal;
         gs.currentBet = raiseTotal;
+        gs.lastRaiser = playerId;
       } else if (action === 'check') {
         if (currentPlayerBet < gs.currentBet) return;
       } else if (action === 'allin') {
@@ -644,8 +855,14 @@ const games = {
         player.chips = 0;
         gs.pot += allInAmount;
         gs.roundBets[playerId] = (gs.roundBets[playerId] || 0) + allInAmount;
-        if (gs.roundBets[playerId] > gs.currentBet) gs.currentBet = gs.roundBets[playerId];
+        if (gs.roundBets[playerId] > gs.currentBet) {
+          gs.currentBet = gs.roundBets[playerId];
+          gs.lastRaiser = playerId;
+        }
       }
+
+      // Mark player as having acted this round
+      gs.hasActed[playerId] = true;
 
       // Advance turn
       gs.currentTurn = (gs.currentTurn + 1) % gs.turnOrder.length;
@@ -665,19 +882,44 @@ const games = {
         return p && p.chips > 0;
       });
       const allMatched = activeBettors.every(pid => (gs.roundBets[pid] || 0) >= gs.currentBet);
+      const allActed = activeBettors.every(pid => gs.hasActed[pid]);
 
-      if ((allMatched && loops >= gs.turnOrder.length - gs.foldedPlayers.length - 1) || activeBettors.length === 0) {
+      if ((allMatched && allActed) || activeBettors.length === 0) {
         this.nextPhase(room);
       } else {
         broadcastPlayerHands(room);
         broadcastToRoom(room, 'players:update', playerList(room));
+        // Trigger AI if it's AI's turn
+        this.scheduleAIAction(room);
       }
     },
+
     nextPhase(room) {
       const gs = room.gameState;
       gs.roundBets = {};
       gs.currentBet = 0;
-      // Start from first non-folded, non-allin player
+      gs.lastRaiser = null;
+      gs.hasActed = {};
+
+      // Check if all active players are all-in (no more betting possible)
+      const activeBettors = gs.activePlayers.filter(pid => {
+        const p = room.players.find(p2 => p2.id === pid);
+        return p && p.chips > 0;
+      });
+      const skipToShowdown = activeBettors.length <= 1;
+
+      // Deal remaining community cards if skipping
+      if (skipToShowdown) {
+        // Run out the board
+        while (gs.community.length < 5 && gs.deck.length > 1) {
+          gs.deck.pop(); // burn
+          gs.community.push(gs.deck.pop());
+        }
+        this.showdown(room);
+        return;
+      }
+
+      // Start from first active player after dealer
       gs.currentTurn = 0;
       for (let i = 0; i < gs.turnOrder.length; i++) {
         const pid = gs.turnOrder[i];
@@ -706,11 +948,14 @@ const games = {
       }
       broadcastPlayerHands(room);
       broadcastToRoom(room, 'players:update', playerList(room));
+      // Trigger AI if it's AI's turn
+      this.scheduleAIAction(room);
     },
+
     showdown(room) {
       const gs = room.gameState;
       gs.phase = 'showdown';
-      let bestRank = -1;
+      let bestResult = null;
       let winner = null;
       gs.handResults = {};
 
@@ -718,13 +963,28 @@ const games = {
         const allCards = [...gs.hands[pid], ...gs.community];
         const result = evaluatePokerHand(allCards);
         gs.handResults[pid] = result;
-        if (result.rank > bestRank) {
-          bestRank = result.rank;
+        if (!bestResult || this.compareHands(result, bestResult) > 0) {
+          bestResult = result;
           winner = pid;
         }
       }
       this.endHand(room, winner);
     },
+
+    // Compare two poker hand results. Returns >0 if a wins, <0 if b wins, 0 if tie
+    compareHands(a, b) {
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      // Same rank - compare kickers
+      const aKickers = a.kickers || [];
+      const bKickers = b.kickers || [];
+      for (let i = 0; i < Math.max(aKickers.length, bKickers.length); i++) {
+        const ak = aKickers[i] || 0;
+        const bk = bKickers[i] || 0;
+        if (ak !== bk) return ak - bk;
+      }
+      return 0; // True tie
+    },
+
     endHand(room, winnerId) {
       const gs = room.gameState;
       gs.phase = 'result';
@@ -732,12 +992,16 @@ const games = {
       const winner = room.players.find(p => p.id === winnerId);
       if (winner) winner.chips += gs.pot;
 
+      // Clear AI timer
+      if (room._aiActionTimer) clearTimeout(room._aiActionTimer);
+
       // Reveal all hands for TV
       broadcastToRoom(room, 'game:state', {
         game: 'poker',
         state: {
           ...gs,
           allHands: gs.hands,
+          handResults: gs.handResults || {},
         },
       });
       broadcastToRoom(room, 'players:update', playerList(room));
@@ -829,7 +1093,7 @@ const games = {
 
         // Generate weight (54-62kg based on odds — favourites carry more weight)
         const baseWeight = 54 + Math.round((10 - Math.min(baseOdds[i], 10)) * 0.8);
-        const weight = baseWeight + Math.floor(Math.random() * 3) - 1; // ±1kg randomness
+        const weight = baseWeight + Math.floor(Math.random() * 3) - 1;
 
         // Generate career stats based on odds tier
         const careerStarts = 8 + Math.floor(Math.random() * 30);
@@ -841,7 +1105,7 @@ const games = {
         const careerSeconds = Math.max(0, Math.round(careerStarts * (winRate * 0.7 + Math.random() * 0.05)));
         const careerThirds = Math.max(0, Math.round(careerStarts * (winRate * 0.5 + Math.random() * 0.04)));
 
-        // Place odds (1/3 of win odds approximately, min 1.10)
+        // Place odds (~35% of win odds, min 1.10)
         const placeOdds = Math.round(Math.max(1.1, baseOdds[i] * 0.35) * 100) / 100;
 
         return {
@@ -885,32 +1149,24 @@ const games = {
 
       // ── FORM GUIDE — carry race history between races ──
       if (!room._horseFormHistory) room._horseFormHistory = {};
-      // Assign form from previous races (or generate fake history for first race)
       for (const horse of horses) {
         const existing = room._horseFormHistory[horse.name];
         if (existing) {
-          horse.form = existing.slice(-5); // last 5 results
+          horse.form = existing.slice(-5);
         } else {
-          // Generate plausible fake form based on odds (favourites have better form)
           const formLen = 2 + Math.floor(Math.random() * 3);
           horse.form = [];
           for (let f = 0; f < formLen; f++) {
-            if (horse.baseOdds < 5) {
-              horse.form.push([1,1,2,2,3,4][Math.floor(Math.random() * 6)]); // mostly top 4
-            } else if (horse.baseOdds < 10) {
-              horse.form.push([2,3,4,5,6,7][Math.floor(Math.random() * 6)]);
-            } else {
-              horse.form.push([3,5,6,7,8,9,10][Math.floor(Math.random() * 7)]);
-            }
+            if (horse.baseOdds < 5) horse.form.push([1,1,2,2,3,4][Math.floor(Math.random() * 6)]);
+            else if (horse.baseOdds < 10) horse.form.push([2,3,4,5,6,7][Math.floor(Math.random() * 6)]);
+            else horse.form.push([3,5,6,7,8,9,10][Math.floor(Math.random() * 7)]);
           }
         }
-        // Form fitness bonus — recent winners are slightly sharper
         const recentWins = horse.form.filter(f => f <= 2).length;
-        horse.formBonus = recentWins * 0.015; // +1.5% speed per recent podium
+        horse.formBonus = recentWins * 0.015;
       }
 
       // ── BARRIER DRAW ──
-      // Assign barriers (gate positions) — shuffled, not sequential
       const barriers = Array.from({length: numHorses}, (_, i) => i + 1);
       for (let i = barriers.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -934,20 +1190,18 @@ const games = {
       ];
       const trackCondition = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
 
-      // ── TRACK BIAS — some tracks favour inside or outside runners ──
+      // ── TRACK BIAS ──
       const BIASES = [
-        { name: 'Inside', factor: 0.03 },  // low barriers get +3% speed
+        { name: 'Inside', factor: 0.03 },
         { name: 'Neutral', factor: 0 },
         { name: 'Neutral', factor: 0 },
-        { name: 'Outside', factor: -0.02 }, // high barriers get +2% speed (inside disadvantaged)
+        { name: 'Outside', factor: -0.02 },
       ];
       const trackBias = BIASES[Math.floor(Math.random() * BIASES.length)];
 
-      // Calculate barrier advantage per horse
       const midBarrier = (numHorses + 1) / 2;
       for (const horse of horses) {
-        // Positive bias = low barriers good. barrierEdge: -1 to +1 where + means advantaged
-        const barrierPosition = (midBarrier - horse.barrier) / midBarrier; // +1 for barrier 1, -1 for high barrier
+        const barrierPosition = (midBarrier - horse.barrier) / midBarrier;
         horse.barrierEdge = barrierPosition * trackBias.factor;
       }
 
@@ -1011,7 +1265,6 @@ const games = {
           // Gentler random drift (±0.3 instead of ±0.6)
           const drift = (Math.random() - 0.5) * 0.3;
           horse.odds = Math.round(Math.max(1.5, Math.min(50, horse.odds + drift)) * 10) / 10;
-          // Keep place odds in sync (~35% of win odds)
           horse.placeOdds = Math.round(Math.max(1.1, horse.odds * 0.35) * 100) / 100;
         }
         recalculateOdds(room.gameState.horses, room.gameState.bets);
@@ -1026,35 +1279,22 @@ const games = {
       if (!player || !amount || amount <= 0 || amount > player.chips) return;
       if (room.gameState.bets[playerId]) return;
 
-      betType = betType || 'win'; // 'win', 'place', 'trifecta'
+      betType = betType || 'win';
       const horse = room.gameState.horses.find(h => h.id === horseId);
 
       if (betType === 'trifecta') {
-        // Validate trifecta selections: [1st, 2nd, 3rd]
         if (!trifectaSelections || trifectaSelections.length !== 3) return;
-        const uniqueCheck = new Set(trifectaSelections);
-        if (uniqueCheck.size !== 3) return;
-        const allValid = trifectaSelections.every(id => room.gameState.horses.find(h => h.id === id && !h.scratched));
-        if (!allValid) return;
-
-        // Calculate trifecta odds (multiply individual odds × diminishing factor)
-        const triHorses = trifectaSelections.map(id => room.gameState.horses.find(h => h.id === id));
-        const trifectaOdds = Math.round(triHorses[0].odds * triHorses[1].odds * triHorses[2].odds * 0.08 * 100) / 100;
-
+        if (new Set(trifectaSelections).size !== 3) return;
+        if (!trifectaSelections.every(id => room.gameState.horses.find(h => h.id === id && !h.scratched))) return;
+        const triH = trifectaSelections.map(id => room.gameState.horses.find(h => h.id === id));
+        const trifectaOdds = Math.round(triH[0].odds * triH[1].odds * triH[2].odds * 0.08 * 100) / 100;
         player.chips -= amount;
-        room.gameState.bets[playerId] = {
-          horseId: trifectaSelections[0], // primary horse for display
-          amount,
-          betType: 'trifecta',
-          trifecta: trifectaSelections,
-          lockedAtOdds: trifectaOdds,
-        };
+        room.gameState.bets[playerId] = { horseId: trifectaSelections[0], amount, betType: 'trifecta', trifecta: trifectaSelections, lockedAtOdds: trifectaOdds };
       } else if (betType === 'place') {
         const lockedAtOdds = horse ? horse.placeOdds : 1;
         player.chips -= amount;
         room.gameState.bets[playerId] = { horseId, amount, betType: 'place', lockedAtOdds };
       } else {
-        // Win bet (default)
         const lockedAtOdds = horse ? horse.odds : 1;
         player.chips -= amount;
         room.gameState.bets[playerId] = { horseId, amount, betType: 'win', lockedAtOdds };
@@ -1328,10 +1568,10 @@ const games = {
           // ── JOCKEY SKILL BONUS — better jockeys extract more from the horse ──
           const jockeyBonus = spd * (horse.jockeySkill - 0.8) * 0.15;
 
-          // ── FORM FITNESS BONUS — horses with recent good form are sharper ──
+          // ── FORM FITNESS BONUS ──
           const formBonus = (horse.formBonus || 0) * spd;
 
-          // ── BARRIER/TRACK BIAS EDGE — early race advantage from draw ──
+          // ── BARRIER/TRACK BIAS EDGE ──
           const barrierBonus = raceProgress < 0.3 ? (horse.barrierEdge || 0) * spd : (horse.barrierEdge || 0) * spd * 0.3;
 
           // ── TRAFFIC PENALTY — running wide costs ground ──
@@ -1392,12 +1632,13 @@ const games = {
           blocked: h.ai?.blocked || false,
         }));
 
-        // Lead change detection — only if enough time since last commentary
+        // Lead change detection
         if (leaderId !== lastLeaderId && lastLeaderId !== null && tickCount > 10) {
           leadChangeCount++;
           const newLeader = gs.horses.find(h => h.id === leaderId);
-          // Only announce if at least 6 seconds since last spoken commentary
-          if (newLeader && (tickCount - lastCommentTick) > 60) {
+          if (newLeader && (tickCount - lastCommentTick) > 15) {
+            // AI-aware commentary for lead changes
+            const wasBlocked = newLeader.ai?.blocked;
             const isCloser = newLeader.style === 'closer';
             const texts = [
               `${newLeader.name} takes the lead!`,
@@ -1407,16 +1648,13 @@ const games = {
             gs.commentary = texts[Math.floor(Math.random() * texts.length)];
             gs.speak = gs.commentary;
             lastCommentTick = tickCount;
-          } else if (newLeader) {
-            // Still update the text overlay, just don't speak it (avoid interrupting)
-            gs.commentary = `${newLeader.name} takes the lead!`;
           }
         }
         lastLeaderId = leaderId;
 
-        // Dynamic AI-aware commentary — every ~7 seconds to let TTS finish speaking
-        const commentInterval = 70; // 7 seconds between spoken commentary
-        if ((tickCount - lastCommentTick) >= commentInterval) {
+        // Dynamic AI-aware commentary
+        const commentInterval = 40;
+        if ((tickCount - lastCommentTick) >= commentInterval && !gs.speak) {
           const leader = gs.horses.find(h => h.id === leaderId);
           if (leader) {
             const lines = games.horseracing._getCommentary(avgPos, leader, gap, rearGap, gs.horses, gs.distance, sorted);
@@ -1424,8 +1662,7 @@ const games = {
             if (lines.speak) gs.speak = lines.speak;
             lastCommentTick = tickCount;
           }
-        } else if (tickCount % 10 === 0) {
-          // Clear speak flag so TTS doesn't repeat, but keep text overlay
+        } else if (tickCount % 5 === 0) {
           gs.speak = null;
         }
 
@@ -1443,11 +1680,11 @@ const games = {
           gs.places = finalSorted.map(h => h.id);
           gs.margins = finalSorted.map((h, i) => i === 0 ? 0 : +(finalSorted[0].position - h.position).toFixed(1));
 
-          // ── Save form history for next race ──
+          // Save form history for next race
           if (!room._horseFormHistory) room._horseFormHistory = {};
           finalSorted.forEach((h, pos) => {
             if (!room._horseFormHistory[h.name]) room._horseFormHistory[h.name] = [];
-            room._horseFormHistory[h.name].push(pos + 1); // 1-indexed finish position
+            room._horseFormHistory[h.name].push(pos + 1);
             if (room._horseFormHistory[h.name].length > 5) room._horseFormHistory[h.name].shift();
           });
 
@@ -1460,7 +1697,7 @@ const games = {
             gs.speak = `And it's ${winHorse.name} who takes the victory ${marginDesc} at odds of ${(winHorse.lockedOdds||winHorse.odds).toFixed(1)} to one!${jockeyCredit}${second ? ` ${second.name} in second.` : ''}`;
           }
 
-          // Determine top 3 horse IDs for place/trifecta payouts
+          // Determine top 3 for place/trifecta payouts
           const top3Ids = finalSorted.slice(0, 3).map(h => h.id);
 
           for (const [pid, bet] of Object.entries(gs.bets)) {
@@ -1468,18 +1705,13 @@ const games = {
             if (!player) continue;
 
             if (bet.betType === 'trifecta') {
-              // Trifecta: exact order 1st, 2nd, 3rd must match
-              if (bet.trifecta &&
-                  bet.trifecta[0] === top3Ids[0] &&
-                  bet.trifecta[1] === top3Ids[1] &&
-                  bet.trifecta[2] === top3Ids[2]) {
+              if (bet.trifecta && bet.trifecta[0] === top3Ids[0] && bet.trifecta[1] === top3Ids[1] && bet.trifecta[2] === top3Ids[2]) {
                 const payoutOdds = bet.lockedAtOdds || 50;
                 player.chips += Math.round(bet.amount * payoutOdds);
                 bet.won = true;
                 bet.winAmount = Math.round(bet.amount * payoutOdds);
               }
             } else if (bet.betType === 'place') {
-              // Place: horse finishes top 3
               if (top3Ids.includes(bet.horseId)) {
                 const payoutOdds = bet.lockedAtOdds || 1.5;
                 player.chips += Math.round(bet.amount * payoutOdds);
@@ -1487,7 +1719,7 @@ const games = {
                 bet.winAmount = Math.round(bet.amount * payoutOdds);
               }
             } else {
-              // Win bet (default)
+              // Win bet
               if (winHorse && bet.horseId === gs.winner) {
                 const payoutOdds = bet.lockedAtOdds || winHorse.lockedOdds || winHorse.odds || 1;
                 player.chips += Math.round(bet.amount * payoutOdds);
@@ -1629,7 +1861,9 @@ function broadcastPlayerHands(room) {
     roundBets: gs.roundBets,
     winner: gs.winner,
     allHands: isReveal ? gs.hands : undefined,
+    handResults: isReveal ? gs.handResults : undefined,
     dealerIdx: gs.dealerIdx,
+    bigBlind: gs.bigBlind,
   };
   // Send each player only their own hand
   room.players.forEach(p => {

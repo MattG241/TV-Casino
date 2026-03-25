@@ -633,16 +633,19 @@ function renderTVPoker(state) {
           const isFolded = state.foldedPlayers?.includes(pid);
           const isWinner = state.winner === pid;
           const hand = isShowdown && state.allHands?.[pid];
+          const handResult = isShowdown && state.handResults?.[pid];
           const roundBet = state.roundBets?.[pid] || 0;
+          const aiTag = p?.isAI ? ' <span style="color:rgba(255,255,255,0.4);font-size:10px">[AI]</span>' : '';
 
           return `
             <div class="tv-poker-seat ${isActive ? 'active' : ''} ${isFolded ? 'folded' : ''} ${isWinner ? 'winner' : ''}">
               <div style="font-size:22px">${AVATARS[p?.avatar] || '😎'}</div>
-              <div style="font-size:13px;font-weight:700">${p?.name || 'Player'}</div>
+              <div style="font-size:13px;font-weight:700">${p?.name || 'Player'}${aiTag}</div>
               <div style="color:var(--gold);font-size:12px">$${p?.chips?.toLocaleString() || 0}</div>
               ${roundBet > 0 ? `<div style="color:var(--green);font-size:11px">Bet: $${roundBet}</div>` : ''}
               ${isFolded ? '<div style="color:var(--red);font-size:11px">FOLDED</div>' : ''}
-              ${isWinner ? '<div style="color:var(--green);font-size:14px;font-weight:800">WINNER!</div>' : ''}
+              ${isWinner ? `<div style="color:var(--green);font-size:14px;font-weight:800">WINNER!</div>` : ''}
+              ${handResult ? `<div style="color:var(--gold);font-size:10px">${handResult.name}</div>` : ''}
               ${hand ? `
                 <div style="display:flex;gap:3px;margin-top:2px;justify-content:center">
                   ${Array.isArray(hand) ? hand.map(c => renderTVCard(c)).join('') : ''}
@@ -829,8 +832,7 @@ function renderTVHorseRacing(state) {
     if (infoEl) infoEl.textContent = state.commentary || '';
 
     if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
-      const backed = Object.values(state.bets||{}).map(b => b.horseId);
-      Race3D.updateHorses(horses, 'betting', { backedHorseIds: backed });
+      Race3D.updateHorses(horses, 'betting');
     }
     return;
   }
@@ -883,27 +885,13 @@ function renderTVHorseRacing(state) {
       isLoading ? 'LOADING' : isStarting ? '<span class="live-dot"></span> STARTING' : 'FINAL';
   }
 
-  // Update commentary — show PHOTO FINISH if close
+  // Update commentary
   const commEl = document.getElementById('skyCommentary');
-  if (commEl) {
-    const leaderPos2 = Math.max(...horses.map(h => h.position || 0), 0);
-    const pos2 = horses.filter(h => !h.scratched).map(h => h.position || 0).sort((a,b) => b - a);
-    const isPhoto = leaderPos2 > 90 && pos2.length >= 2 && (pos2[0] - pos2[1]) < 1.5;
-    if (isPhoto && isRacing) {
-      commEl.innerHTML = '<span class="photo-finish-flash">📸 PHOTO FINISH! 📸</span>';
-    } else {
-      commEl.textContent = commentary;
-    }
-  }
+  if (commEl) commEl.textContent = commentary;
 
-  // Update 3D horses — pass backed horse IDs and photo finish detection
+  // Update 3D horses
   if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
-    const backed = Object.values(state.bets||{}).map(b => b.horseId);
-    // Detect photo finish — top 2 horses within 2 units of each other near the end
-    const leaderPos = Math.max(...horses.map(h => h.position || 0), 0);
-    const positions = horses.filter(h => !h.scratched).map(h => h.position || 0).sort((a,b) => b - a);
-    const isPhotoFinish = leaderPos > 85 && positions.length >= 2 && (positions[0] - positions[1]) < 2;
-    Race3D.updateHorses(horses, state.phase, { backedHorseIds: backed, photoFinish: isPhotoFinish });
+    Race3D.updateHorses(horses, state.phase);
   }
 
   // Update sidebar — show live positions with margins
