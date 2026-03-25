@@ -2,6 +2,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useGameStore } from '@/lib/store'
+import { useSlotsStore } from '@/lib/slots-store'
 
 const SERVER_URL = typeof window !== 'undefined'
   ? window.location.origin.replace(':3001', ':3000')
@@ -10,6 +11,7 @@ const SERVER_URL = typeof window !== 'undefined'
 export function useSocket() {
   const socketRef = useRef<Socket | null>(null)
   const store = useGameStore()
+  const slotsStore = useSlotsStore()
 
   useEffect(() => {
     const socket = io(SERVER_URL, { transports: ['websocket', 'polling'] })
@@ -42,14 +44,22 @@ export function useSocket() {
     })
 
     socket.on('game:started', (data: { game: string }) => {
-      if (data.game === 'poker') {
-        store.setScreen('game')
-      }
+      store.setScreen('game')
+      store.setCurrentGame(data.game)
     })
 
     socket.on('game:state', (data: { game: string; state: any }) => {
       if (data.game === 'poker') {
         store.setGameState(data.state)
+      } else if (data.game === 'slots') {
+        slotsStore.setGameState(data.state)
+      }
+    })
+
+    socket.on('game:timer', (data: { timer: number }) => {
+      const gs = useSlotsStore.getState().gameState
+      if (gs) {
+        slotsStore.setGameState({ ...gs, timer: data.timer })
       }
     })
 
@@ -74,17 +84,28 @@ export function useSocket() {
     socketRef.current?.emit('room:join', { code, playerName: name, avatar: 0 })
   }, [store])
 
-  const startPoker = useCallback(() => {
-    socketRef.current?.emit('game:select', { game: 'poker' })
+  const startGame = useCallback((game: string) => {
+    socketRef.current?.emit('game:select', { game })
   }, [])
 
   const pokerAction = useCallback((action: string, amount?: number) => {
     socketRef.current?.emit('poker:action', { action, amount })
   }, [])
 
+  const slotsBet = useCallback((amount: number) => {
+    socketRef.current?.emit('slots:bet', { amount })
+  }, [])
+
+  const slotsFreeSpin = useCallback(() => {
+    socketRef.current?.emit('slots:free-spin')
+  }, [])
+
   const confirmReady = useCallback(() => {
     socketRef.current?.emit('lobby:everyone-in')
   }, [])
 
-  return { createRoom, joinRoom, startPoker, pokerAction, confirmReady, socket: socketRef }
+  return {
+    createRoom, joinRoom, startGame, pokerAction, slotsBet, slotsFreeSpin,
+    confirmReady, socket: socketRef,
+  }
 }

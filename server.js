@@ -353,60 +353,260 @@ const games = {
     },
   },
 
-  // ── SLOTS ──
+  // ── SLOTS (Multiplayer Spin-Together) ──
   slots: {
-    start(room) {
-      room.gameState = { phase: 'ready', results: {} };
-      broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
+    SYMBOLS: ['cherry', 'lemon', 'orange', 'plum', 'bell', 'bar', 'seven', 'diamond', 'wild'],
+    WEIGHTS:  [22, 18, 16, 13, 10, 7, 3, 2, 9],
+    PAYOUTS: { cherry: 5, lemon: 8, orange: 10, plum: 15, bell: 25, bar: 50, seven: 100, diamond: 250 },
+    // 5 paylines: middle row, top row, bottom row, diagonal \, diagonal /
+    PAYLINES: [
+      [[0,1],[1,1],[2,1]], // middle
+      [[0,0],[1,0],[2,0]], // top
+      [[0,2],[1,2],[2,2]], // bottom
+      [[0,0],[1,1],[2,2]], // diagonal \
+      [[0,2],[1,1],[2,0]], // diagonal /
+    ],
+
+    weightedRandom() {
+      const totalWeight = this.WEIGHTS.reduce((a, b) => a + b, 0);
+      let r = Math.random() * totalWeight;
+      for (let i = 0; i < this.SYMBOLS.length; i++) {
+        r -= this.WEIGHTS[i];
+        if (r <= 0) return this.SYMBOLS[i];
+      }
+      return this.SYMBOLS[0];
     },
-    spin(room, playerId, betAmount) {
+
+    start(room) {
+      room.gameState = {
+        phase: 'betting',       // betting → spinning → results → betting...
+        bets: {},               // { playerId: amount }
+        results: {},            // { playerId: { reels, paylines, totalWin, betAmount } }
+        roundNumber: (room.gameState?.roundNumber || 0) + 1,
+        jackpot: room.gameState?.jackpot || 500,
+        timer: 15,
+        history: room.gameState?.history || [],     // last 10 round summaries
+        leaderboard: room.gameState?.leaderboard || {}, // { playerId: netWinnings }
+        bonusRound: false,
+        freeSpins: {},          // { playerId: count }
+      };
+      broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
+      // Start betting timer
+      this._startBettingTimer(room);
+    },
+
+    _startBettingTimer(room) {
+      if (room._slotsTimer) clearInterval(room._slotsTimer);
+      room._slotsTimer = setInterval(() => {
+        if (!room.gameState || room.currentGame !== 'slots') {
+          clearInterval(room._slotsTimer);
+          return;
+        }
+        room.gameState.timer--;
+        broadcastToRoom(room, 'game:timer', { timer: room.gameState.timer });
+        if (room.gameState.timer <= 0) {
+          clearInterval(room._slotsTimer);
+          this.spinAll(room);
+        }
+      }, 1000);
+    },
+
+    placeBet(room, playerId, amount) {
+      if (!room.gameState || room.gameState.phase !== 'betting') return;
       const player = room.players.find(p => p.id === playerId);
       if (!player) return;
-      const amount = parseInt(betAmount);
+      amount = parseInt(amount);
       if (!amount || amount <= 0 || amount > player.chips) return;
-      // Throttle: 1 spin per second per player
-      const now = Date.now();
-      if (!room._lastSpin) room._lastSpin = {};
-      if (room._lastSpin[playerId] && now - room._lastSpin[playerId] < 1000) return;
-      room._lastSpin[playerId] = now;
+
+      // Refund previous bet if changing
+      if (room.gameState.bets[playerId]) {
+        player.chips += room.gameState.bets[playerId];
+      }
       player.chips -= amount;
-      betAmount = amount;
+      room.gameState.bets[playerId] = amount;
+      broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
+      broadcastToRoom(room, 'players:update', playerList(room));
 
-      const SYMBOLS = ['cherry', 'lemon', 'orange', 'plum', 'bell', 'bar', 'seven', 'diamond'];
-      const WEIGHTS = [25, 20, 18, 15, 10, 7, 3, 2]; // weighted probabilities
-      const totalWeight = WEIGHTS.reduce((a, b) => a + b, 0);
-
-      function weightedRandom() {
-        let r = Math.random() * totalWeight;
-        for (let i = 0; i < SYMBOLS.length; i++) {
-          r -= WEIGHTS[i];
-          if (r <= 0) return SYMBOLS[i];
-        }
-        return SYMBOLS[0];
+      // If all players have bet, start spinning immediately
+      const playersWithChips = room.players.filter(p => p.chips > 0 || room.gameState.bets[p.id]);
+      if (Object.keys(room.gameState.bets).length >= playersWithChips.length && playersWithChips.length > 0) {
+        clearInterval(room._slotsTimer);
+        // Small delay so last player sees their bet registered
+        setTimeout(() => this.spinAll(room), 1000);
       }
+    },
 
-      const reels = [
-        [weightedRandom(), weightedRandom(), weightedRandom()],
-        [weightedRandom(), weightedRandom(), weightedRandom()],
-        [weightedRandom(), weightedRandom(), weightedRandom()],
+    generateReels() {
+      return [
+        [this.weightedRandom(), this.weightedRandom(), this.weightedRandom()],
+        [this.weightedRandom(), this.weightedRandom(), this.weightedRandom()],
+        [this.weightedRandom(), this.weightedRandom(), this.weightedRandom()],
       ];
+    },
 
-      // Check middle row for wins
-      const middle = [reels[0][1], reels[1][1], reels[2][1]];
-      let multiplier = 0;
+    evaluateReels(reels, betAmount) {
+      const results = { paylines: [], totalWin: 0, totalMultiplier: 0, jackpotWin: false };
 
-      if (middle[0] === middle[1] && middle[1] === middle[2]) {
-        const sym = middle[0];
-        const PAYOUTS = { cherry: 5, lemon: 8, orange: 10, plum: 15, bell: 25, bar: 50, seven: 100, diamond: 250 };
-        multiplier = PAYOUTS[sym] || 5;
-      } else if (middle[0] === middle[1] || middle[1] === middle[2]) {
-        multiplier = 2;
+      for (let lineIdx = 0; lineIdx < this.PAYLINES.length; lineIdx++) {
+        const line = this.PAYLINES[lineIdx];
+        const symbols = line.map(([r, s]) => reels[r][s]);
+
+        // Wild substitution: wild matches any symbol
+        const nonWild = symbols.filter(s => s !== 'wild');
+        let effectiveSymbols = symbols;
+        if (nonWild.length > 0 && nonWild.length < 3) {
+          const mainSym = nonWild[0];
+          effectiveSymbols = symbols.map(s => s === 'wild' ? mainSym : s);
+        } else if (nonWild.length === 0) {
+          effectiveSymbols = ['diamond', 'diamond', 'diamond']; // 3 wilds = best payout
+        }
+
+        let multiplier = 0;
+        if (effectiveSymbols[0] === effectiveSymbols[1] && effectiveSymbols[1] === effectiveSymbols[2]) {
+          const sym = effectiveSymbols[0];
+          multiplier = this.PAYOUTS[sym] || 5;
+          // Wild multiplier bonus: each wild symbol doubles the payout
+          const wildCount = symbols.filter(s => s === 'wild').length;
+          if (wildCount > 0 && wildCount < 3) multiplier *= (1 + wildCount);
+        } else if (effectiveSymbols[0] === effectiveSymbols[1] || effectiveSymbols[1] === effectiveSymbols[2]) {
+          multiplier = 2;
+        }
+
+        if (multiplier > 0) {
+          const lineWin = betAmount * multiplier;
+          results.paylines.push({ lineIdx, symbols, multiplier, win: lineWin });
+          results.totalWin += lineWin;
+          results.totalMultiplier += multiplier;
+        }
       }
 
-      const winAmount = betAmount * multiplier;
-      player.chips += winAmount;
+      // Jackpot: 3 diamonds on middle line
+      const midLine = this.PAYLINES[0].map(([r, s]) => reels[r][s]);
+      if (midLine.every(s => s === 'diamond')) {
+        results.jackpotWin = true;
+      }
 
-      room.gameState.results[playerId] = { reels, middle, multiplier, winAmount, betAmount };
+      return results;
+    },
+
+    spinAll(room) {
+      if (!room.gameState || room.gameState.phase !== 'betting') return;
+      room.gameState.phase = 'spinning';
+      room.gameState.timer = null;
+      broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
+
+      // After spin animation delay, reveal results
+      setTimeout(() => {
+        if (!room.gameState || room.currentGame !== 'slots') return;
+        room.gameState.phase = 'results';
+        const results = {};
+        let jackpotWinner = null;
+
+        // Contribute to jackpot from all bets
+        const totalBets = Object.values(room.gameState.bets).reduce((a, b) => a + b, 0);
+        room.gameState.jackpot += Math.floor(totalBets * 0.05); // 5% of bets go to jackpot
+
+        for (const [pid, betAmount] of Object.entries(room.gameState.bets)) {
+          const player = room.players.find(p => p.id === pid);
+          if (!player) continue;
+
+          const reels = this.generateReels();
+          const evalResult = this.evaluateReels(reels, betAmount);
+
+          // Award winnings
+          player.chips += evalResult.totalWin;
+
+          // Jackpot check
+          if (evalResult.jackpotWin) {
+            player.chips += room.gameState.jackpot;
+            evalResult.jackpotAmount = room.gameState.jackpot;
+            jackpotWinner = pid;
+          }
+
+          // Track leaderboard (net winnings)
+          if (!room.gameState.leaderboard[pid]) room.gameState.leaderboard[pid] = 0;
+          room.gameState.leaderboard[pid] += evalResult.totalWin - betAmount;
+
+          // Free spins: ~5% chance to win 3 free spins
+          if (Math.random() < 0.05) {
+            room.gameState.freeSpins[pid] = (room.gameState.freeSpins[pid] || 0) + 3;
+            evalResult.freeSpinsWon = 3;
+          }
+
+          results[pid] = {
+            reels,
+            paylines: evalResult.paylines,
+            totalWin: evalResult.totalWin,
+            totalMultiplier: evalResult.totalMultiplier,
+            betAmount,
+            jackpotWin: evalResult.jackpotWin,
+            jackpotAmount: evalResult.jackpotAmount || 0,
+            freeSpinsWon: evalResult.freeSpinsWon || 0,
+          };
+        }
+
+        // Reset jackpot if won
+        if (jackpotWinner) room.gameState.jackpot = 500;
+
+        // Round history
+        const roundSummary = {
+          round: room.gameState.roundNumber,
+          players: Object.entries(results).map(([pid, r]) => ({
+            id: pid,
+            name: room.players.find(p => p.id === pid)?.name || '?',
+            bet: r.betAmount,
+            win: r.totalWin,
+            net: r.totalWin - r.betAmount,
+          })),
+          jackpotWinner,
+        };
+        room.gameState.history.unshift(roundSummary);
+        if (room.gameState.history.length > 10) room.gameState.history.pop();
+
+        // Bonus round: ~8% chance after round 3+
+        if (room.gameState.roundNumber >= 3 && Math.random() < 0.08) {
+          room.gameState.bonusRound = true;
+        }
+
+        room.gameState.results = results;
+        broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
+        broadcastToRoom(room, 'players:update', playerList(room));
+
+        // Auto-advance to next round
+        setTimeout(() => {
+          if (rooms.has(room.code) && room.currentGame === 'slots') {
+            this.start(room);
+          }
+        }, 6000);
+      }, 3000); // 3 second spin animation
+    },
+
+    // Free spin for a player (uses existing bet amount)
+    freeSpin(room, playerId) {
+      if (!room.gameState) return;
+      const freeCount = room.gameState.freeSpins?.[playerId] || 0;
+      if (freeCount <= 0) return;
+
+      room.gameState.freeSpins[playerId] = freeCount - 1;
+      const lastBet = room.gameState.results?.[playerId]?.betAmount || 10;
+      const reels = this.generateReels();
+      const evalResult = this.evaluateReels(reels, lastBet);
+
+      const player = room.players.find(p => p.id === playerId);
+      if (player) player.chips += evalResult.totalWin;
+
+      // Send as a personal result update
+      room.gameState.results[playerId] = {
+        reels,
+        paylines: evalResult.paylines,
+        totalWin: evalResult.totalWin,
+        totalMultiplier: evalResult.totalMultiplier,
+        betAmount: 0, // free spin
+        jackpotWin: false,
+        jackpotAmount: 0,
+        freeSpinsWon: 0,
+        isFreeSpin: true,
+      };
       broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
       broadcastToRoom(room, 'players:update', playerList(room));
     },
@@ -2156,9 +2356,19 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('slots:bet', (data) => {
+    if (!data || typeof data !== 'object') return;
+    if (currentRoom?.currentGame === 'slots') games.slots.placeBet(currentRoom, playerId, data.amount);
+  });
+
+  socket.on('slots:free-spin', () => {
+    if (currentRoom?.currentGame === 'slots') games.slots.freeSpin(currentRoom, playerId);
+  });
+
+  // Legacy support
   socket.on('slots:spin', (data) => {
     if (!data || typeof data !== 'object') return;
-    if (currentRoom?.currentGame === 'slots') games.slots.spin(currentRoom, playerId, data.amount);
+    if (currentRoom?.currentGame === 'slots') games.slots.placeBet(currentRoom, playerId, data.amount);
   });
 
   socket.on('blackjack:bet', (data) => {

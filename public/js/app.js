@@ -17,7 +17,7 @@ const AVATARS = ['😎', '🤠', '👑', '🎩', '🦊', '🐺', '🦁', '🐲',
 const SUIT_SYMBOLS = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
 const SLOT_SYMBOLS = {
   cherry: '🍒', lemon: '🍋', orange: '🍊', plum: '🍇',
-  bell: '🔔', bar: '📊', seven: '7️⃣', diamond: '💎'
+  bell: '🔔', bar: '📊', seven: '7️⃣', diamond: '💎', wild: '⭐'
 };
 
 // ── Init ────────────────────────────────────────────────────────────────
@@ -420,19 +420,42 @@ function placeRouletteBet(type, value) {
 
 // ── SLOTS RENDERER ──────────────────────────────────────────────────────
 
+const SLOT_SYMBOL_NAMES = { cherry:'🍒', lemon:'🍋', orange:'🍊', plum:'🍇', bell:'🔔', bar:'📊', seven:'7️⃣', diamond:'💎', wild:'⭐' };
 let slotsBetAmount = 10;
+let slotsHasBet = false;
 
 function renderSlots(state) {
   const el = document.getElementById('slotsContent');
   const myResult = state.results?.[myId];
+  const myBet = state.bets?.[myId];
+  const phase = state.phase || 'betting';
+  const freeSpins = state.freeSpins?.[myId] || 0;
+  const jackpot = state.jackpot || 500;
 
+  // Reels display
   let reelsHTML = '';
-  if (myResult) {
+  if (myResult && (phase === 'results' || myResult.isFreeSpin)) {
+    const winLines = (myResult.paylines || []).map(p => p.lineIdx);
     reelsHTML = myResult.reels.map((reel, ri) => `
-      <div class="slot-reel">
-        ${reel.map((sym, si) => `
-          <div class="slot-symbol ${si === 1 ? 'middle' : ''}">${SLOT_SYMBOLS[sym]}</div>
-        `).join('')}
+      <div class="slot-reel ${phase === 'spinning' ? 'spinning' : ''}">
+        ${reel.map((sym, si) => {
+          const isWinning = winLines.some(li => {
+            const lines = [[0,1],[1,1],[2,1],[0,0],[1,0],[2,0],[0,2],[1,2],[2,2],[0,0],[1,1],[2,2],[0,2],[1,1],[2,0]];
+            // Check payline definitions
+            const PAYLINES = [[[0,1],[1,1],[2,1]],[[0,0],[1,0],[2,0]],[[0,2],[1,2],[2,2]],[[0,0],[1,1],[2,2]],[[0,2],[1,1],[2,0]]];
+            if (li < PAYLINES.length) return PAYLINES[li].some(([r,s]) => r === ri && s === si);
+            return false;
+          });
+          return `<div class="slot-symbol ${si === 1 ? 'middle' : ''} ${isWinning ? 'winner' : ''}">${SLOT_SYMBOL_NAMES[sym] || sym}</div>`;
+        }).join('')}
+      </div>
+    `).join('');
+  } else if (phase === 'spinning') {
+    reelsHTML = [0,1,2].map(() => `
+      <div class="slot-reel spinning">
+        <div class="slot-symbol">🍒</div>
+        <div class="slot-symbol middle">⭐</div>
+        <div class="slot-symbol">💎</div>
       </div>
     `).join('');
   } else {
@@ -445,38 +468,117 @@ function renderSlots(state) {
     `).join('');
   }
 
+  // Other players' results
+  const otherResults = Object.entries(state.results || {}).filter(([pid]) => pid !== myId);
+  const otherResultsHTML = otherResults.length > 0 && phase === 'results' ? `
+    <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px">
+      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Other Players</div>
+      ${otherResults.map(([pid, r]) => {
+        const p = players.find(pl => pl.id === pid);
+        return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">
+          <span>${p?.name || 'Player'}</span>
+          <span style="color:${r.totalWin > 0 ? 'var(--green)' : 'var(--text-dim)'}">${r.totalWin > 0 ? '+$' + r.totalWin : 'No win'}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  ` : '';
+
+  // Leaderboard
+  const lb = Object.entries(state.leaderboard || {}).sort((a,b) => b[1] - a[1]).slice(0, 5);
+  const leaderboardHTML = lb.length > 0 ? `
+    <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.06);padding-top:8px">
+      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Session Leaderboard</div>
+      ${lb.map(([pid, net], i) => {
+        const p = players.find(pl => pl.id === pid);
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+        return `<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:12px">
+          <span>${medal} ${p?.name || 'Player'}${pid === myId ? ' (You)' : ''}</span>
+          <span style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">$${net >= 0 ? '+' : ''}${net}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  ` : '';
+
   el.innerHTML = `
     <div class="slots-machine">
-      <div style="font-size:20px;font-weight:800;color:var(--gold);text-align:center;margin-bottom:12px">
+      <div style="font-size:20px;font-weight:800;color:var(--gold);text-align:center;margin-bottom:4px">
         LUCKY SLOTS
       </div>
+      <div style="text-align:center;font-size:12px;color:var(--text-dim);margin-bottom:10px">
+        Round ${state.roundNumber || 1} • 5 Paylines • Wilds ⭐
+      </div>
+
+      <!-- Progressive Jackpot -->
+      <div style="text-align:center;background:linear-gradient(135deg,rgba(212,168,67,0.15),rgba(212,168,67,0.05));
+                  border:1px solid rgba(212,168,67,0.3);border-radius:8px;padding:6px 12px;margin-bottom:10px">
+        <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:2px">Progressive Jackpot</div>
+        <div style="font-size:22px;font-weight:900;color:var(--gold)">$${jackpot.toLocaleString()}</div>
+        <div style="font-size:9px;color:var(--text-dim)">3x 💎 on middle line wins jackpot</div>
+      </div>
+
       <div class="slots-display">${reelsHTML}</div>
-      ${myResult && myResult.winAmount > 0 ? `
-        <div class="win-display">WIN! $${myResult.winAmount} (${myResult.multiplier}x)</div>
-      ` : myResult ? `
-        <div style="text-align:center;color:var(--text-dim);margin-top:12px">No win - try again!</div>
+
+      ${myResult && phase === 'results' ? `
+        ${myResult.jackpotWin ? `
+          <div class="win-display" style="font-size:28px;color:#ff0">🎰 JACKPOT! $${myResult.jackpotAmount}! 🎰</div>
+        ` : ''}
+        ${myResult.totalWin > 0 ? `
+          <div class="win-display">WIN! $${myResult.totalWin}${myResult.paylines?.length > 1 ? ' (' + myResult.paylines.length + ' lines!)' : ''}</div>
+          ${myResult.paylines?.map(pl => `
+            <div style="text-align:center;font-size:11px;color:var(--green)">
+              Line ${pl.lineIdx + 1}: ${pl.symbols.map(s => SLOT_SYMBOL_NAMES[s]).join(' ')} → ${pl.multiplier}x ($${pl.win})
+            </div>
+          `).join('')}
+        ` : `
+          <div style="text-align:center;color:var(--text-dim);margin-top:12px">No win this round</div>
+        `}
+        ${myResult.freeSpinsWon > 0 ? `
+          <div style="text-align:center;color:var(--gold);font-weight:700;margin-top:6px">🎁 Won ${myResult.freeSpinsWon} FREE SPINS!</div>
+        ` : ''}
+      ` : phase === 'spinning' ? `
+        <div style="text-align:center;color:var(--gold);margin-top:12px;font-weight:700" class="animate-pulse">
+          Spinning...
+        </div>
       ` : ''}
+
+      ${otherResultsHTML}
+      ${leaderboardHTML}
     </div>
 
-    <div class="bet-controls">
-      <div class="bet-label">Bet Amount</div>
-      <div class="bet-amount-display">$${slotsBetAmount}</div>
-      <div class="quick-amounts">
-        ${[5,10,25,50,100].map(v => `
-          <button class="chip-btn chip-${v} ${slotsBetAmount === v ? 'selected' : ''}"
-            onclick="slotsBetAmount=${v}; renderSlots(window._slotsState)">${v}</button>
-        `).join('')}
+    ${phase === 'betting' ? `
+      <div class="bet-controls">
+        ${freeSpins > 0 ? `
+          <button class="btn btn-purple btn-block" onclick="socket.emit('slots:free-spin')" style="margin-bottom:8px">
+            🎁 USE FREE SPIN (${freeSpins} left)
+          </button>
+        ` : ''}
+        <div class="bet-label">Bet Amount ${myBet ? '(Bet placed!)' : ''}</div>
+        <div class="bet-amount-display">$${slotsBetAmount}</div>
+        <div class="quick-amounts">
+          ${[5,10,25,50,100].map(v => `
+            <button class="chip-btn chip-${v} ${slotsBetAmount === v ? 'selected' : ''}"
+              onclick="slotsBetAmount=${v}; renderSlots(window._slotsState)">${v}</button>
+          `).join('')}
+        </div>
+        <button class="btn btn-gold btn-block slots-lever" onclick="spinSlots()" ${myBet ? 'style="opacity:0.5"' : ''}>
+          ${myBet ? 'WAITING FOR OTHERS...' : 'PLACE BET & SPIN!'}
+        </button>
+        <div style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:6px">
+          ${Object.keys(state.bets || {}).length} / ${players.length} players ready
+          ${state.timer ? ' • ' + state.timer + 's' : ''}
+        </div>
       </div>
-      <button class="btn btn-gold btn-block slots-lever" onclick="spinSlots()">
-        PULL THE LEVER!
-      </button>
-    </div>
+    ` : phase === 'results' ? `
+      <div style="text-align:center;color:var(--text-dim);font-size:13px;margin-top:12px">
+        Next round starting soon...
+      </div>
+    ` : ''}
   `;
   window._slotsState = state;
 }
 
 function spinSlots() {
-  socket.emit('slots:spin', { amount: slotsBetAmount });
+  socket.emit('slots:bet', { amount: slotsBetAmount });
 }
 
 // ── BLACKJACK RENDERER ──────────────────────────────────────────────────

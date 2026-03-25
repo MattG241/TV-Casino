@@ -39,6 +39,7 @@ interface GameStore {
   myName: string
   roomCode: string | null
   screen: 'lobby' | 'game'
+  currentGame: string | null
 
   // Players
   players: Player[]
@@ -53,6 +54,7 @@ interface GameStore {
   setMyName: (name: string) => void
   setRoomCode: (code: string) => void
   setScreen: (s: 'lobby' | 'game') => void
+  setCurrentGame: (g: string | null) => void
   setPlayers: (p: Player[]) => void
   setGameState: (s: PokerState | null) => void
   setMyChips: (c: number) => void
@@ -64,6 +66,7 @@ export const useGameStore = create<GameStore>((set) => ({
   myName: '',
   roomCode: null,
   screen: 'lobby',
+  currentGame: null,
   players: [],
   gameState: null,
   myChips: 1000,
@@ -73,6 +76,7 @@ export const useGameStore = create<GameStore>((set) => ({
   setMyName: (name) => set({ myName: name }),
   setRoomCode: (code) => set({ roomCode: code }),
   setScreen: (s) => set({ screen: s }),
+  setCurrentGame: (g) => set({ currentGame: g }),
   setPlayers: (p) => set({ players: p }),
   setGameState: (s) => set({ gameState: s }),
   setMyChips: (c) => set({ myChips: c }),

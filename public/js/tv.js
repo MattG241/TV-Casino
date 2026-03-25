@@ -451,54 +451,107 @@ function renderTVHistory(history) {
 
 // ── TV SLOTS ────────────────────────────────────────────────────────────
 
-let lastSlotsResult = null;
+const TV_SLOT_SYMBOLS = { cherry:'🍒', lemon:'🍋', orange:'🍊', plum:'🍇', bell:'🔔', bar:'📊', seven:'7️⃣', diamond:'💎', wild:'⭐' };
+let lastSlotsPhase = null;
 
 function renderTVSlots(state) {
   const el = document.getElementById('tvSlotsContent');
+  const phase = state.phase || 'betting';
   const results = Object.entries(state.results || {});
-  const latestResult = results.length > 0 ? results[results.length - 1] : null;
+  const jackpot = state.jackpot || 500;
+  const anyJackpot = results.some(([,r]) => r.jackpotWin);
 
-  if (latestResult) {
-    const [pid, result] = latestResult;
-    const p = players.find(pl => pl.id === pid);
-
-    if (lastSlotsResult !== pid + JSON.stringify(result.reels)) {
-      lastSlotsResult = pid + JSON.stringify(result.reels);
-      CasinoAudio.slotSpin();
-      setTimeout(() => {
-        CasinoAudio.slotStop();
-        if (result.winAmount > 0) setTimeout(() => CasinoAudio.win(), 300);
-      }, 800);
+  // Audio triggers
+  if (phase !== lastSlotsPhase) {
+    if (phase === 'spinning') CasinoAudio.slotSpin();
+    if (phase === 'results') {
+      CasinoAudio.slotStop();
+      const anyWin = results.some(([,r]) => r.totalWin > 0);
+      if (anyWin) setTimeout(() => CasinoAudio.win(), 300);
+      if (anyJackpot) setTimeout(() => CasinoAudio.bigWin(), 500);
     }
+    lastSlotsPhase = phase;
+  }
 
+  if (phase === 'results' && results.length > 0) {
+    // Show all players' results side by side
     el.innerHTML = `
-      <div class="tv-slots-machine">
-        <div class="tv-slots-title">LUCKY SLOTS</div>
-        <div style="text-align:center;font-size:16px;margin-bottom:8px;color:var(--text-dim)">
-          ${p?.name || 'Player'} spins!
+      <div class="tv-slots-machine" style="max-width:900px;margin:0 auto">
+        <div class="tv-slots-title">LUCKY SLOTS — Round ${state.roundNumber || 1}</div>
+        ${anyJackpot ? '<div style="text-align:center;font-size:32px;color:#ff0;font-weight:900;animation:pulse 0.5s infinite">🎰 JACKPOT! 🎰</div>' : ''}
+        <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:12px">
+          ${results.map(([pid, result]) => {
+            const p = players.find(pl => pl.id === pid);
+            return `
+              <div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:12px;min-width:200px;
+                          border:1px solid ${result.totalWin > 0 ? 'rgba(39,174,96,0.4)' : 'rgba(255,255,255,0.06)'}">
+                <div style="text-align:center;font-size:14px;font-weight:700;margin-bottom:6px;
+                            color:${result.totalWin > 0 ? 'var(--green)' : 'var(--text-dim)'}">
+                  ${p?.name || 'Player'} ${result.jackpotWin ? '🏆' : ''}
+                </div>
+                <div class="tv-reels" style="justify-content:center">
+                  ${result.reels.map(reel => `
+                    <div class="tv-reel" style="width:55px;height:120px">
+                      ${reel.map((sym, si) => `
+                        <div class="tv-slot-symbol" style="font-size:24px;height:40px;
+                          ${si === 1 ? 'background:rgba(201,168,76,0.15)' : ''}">${TV_SLOT_SYMBOLS[sym] || sym}</div>
+                      `).join('')}
+                    </div>
+                  `).join('')}
+                </div>
+                ${result.totalWin > 0 ? `
+                  <div style="text-align:center;color:var(--green);font-weight:800;font-size:16px;margin-top:6px">
+                    +$${result.totalWin}${result.paylines?.length > 1 ? ' (' + result.paylines.length + ' lines)' : ''}
+                  </div>
+                  ${result.jackpotWin ? `<div style="text-align:center;color:#ff0;font-size:14px">JACKPOT +$${result.jackpotAmount}</div>` : ''}
+                ` : `<div style="text-align:center;color:var(--text-dim);font-size:13px;margin-top:6px">No win</div>`}
+              </div>
+            `;
+          }).join('')}
         </div>
-        <div class="tv-reels">
-          ${result.reels.map(reel => `
-            <div class="tv-reel">
-              ${reel.map((sym, si) => `
-                <div class="tv-slot-symbol ${si === 1 ? 'middle' : ''}">${SLOT_SYMBOLS[sym]}</div>
-              `).join('')}
-            </div>
-          `).join('')}
-        </div>
-        ${result.winAmount > 0 ? `
-          <div class="tv-win-display">${p?.name} WINS $${result.winAmount}! (${result.multiplier}x)</div>
-        ` : `
-          <div style="text-align:center;font-size:18px;color:var(--text-dim);margin-top:8px">No win this time</div>
-        `}
+
+        <!-- Leaderboard -->
+        ${Object.keys(state.leaderboard || {}).length > 0 ? `
+          <div style="margin-top:16px;display:flex;justify-content:center;gap:24px">
+            ${Object.entries(state.leaderboard).sort((a,b) => b[1] - a[1]).slice(0, 5).map(([pid, net], i) => {
+              const p = players.find(pl => pl.id === pid);
+              const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+              return `<div style="text-align:center">
+                <div style="font-size:18px">${medal || (i+1)+'.'}</div>
+                <div style="font-size:13px;font-weight:700">${p?.name || '?'}</div>
+                <div style="font-size:12px;color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">$${net >= 0 ? '+' : ''}${net}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        ` : ''}
       </div>
     `;
-    if (result.winAmount > 0) showConfetti();
-  } else {
+    const anyWin = results.some(([,r]) => r.totalWin > 0);
+    if (anyWin) showConfetti();
+  } else if (phase === 'spinning') {
     el.innerHTML = `
       <div class="tv-slots-machine">
-        <div class="tv-slots-title">LUCKY SLOTS</div>
-        <div class="tv-reels">
+        <div class="tv-slots-title">LUCKY SLOTS — Round ${state.roundNumber || 1}</div>
+        <div style="text-align:center;font-size:24px;color:var(--gold);margin:30px 0" class="animate-pulse">
+          🎰 Spinning... 🎰
+        </div>
+        <div style="text-align:center;font-size:14px;color:var(--text-dim)">
+          ${Object.keys(state.bets || {}).length} players spinning
+        </div>
+      </div>
+    `;
+  } else {
+    // Betting phase
+    const betCount = Object.keys(state.bets || {}).length;
+    const totalPlayers = players.length;
+    el.innerHTML = `
+      <div class="tv-slots-machine">
+        <div class="tv-slots-title">LUCKY SLOTS — Round ${state.roundNumber || 1}</div>
+        <div style="text-align:center;margin:16px 0">
+          <div style="font-size:12px;color:var(--gold);text-transform:uppercase;letter-spacing:2px">Progressive Jackpot</div>
+          <div style="font-size:36px;font-weight:900;color:var(--gold)">$${jackpot.toLocaleString()}</div>
+        </div>
+        <div class="tv-reels" style="justify-content:center">
           ${[0,1,2].map(() => `
             <div class="tv-reel">
               <div class="tv-slot-symbol">🍒</div>
@@ -507,7 +560,13 @@ function renderTVSlots(state) {
             </div>
           `).join('')}
         </div>
-        <div class="tv-status">Waiting for players to spin...</div>
+        <div style="text-align:center;margin-top:16px;font-size:18px;color:var(--text-dim)">
+          ${betCount} / ${totalPlayers} players ready
+          ${state.timer ? ` • ${state.timer}s` : ''}
+        </div>
+        <div style="text-align:center;font-size:13px;color:var(--text-dim);margin-top:8px">
+          5 Paylines • Wild ⭐ Substitution • Free Spins
+        </div>
       </div>
     `;
   }
