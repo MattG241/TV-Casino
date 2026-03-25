@@ -5,11 +5,11 @@ import { useGameStore } from '@/lib/store'
 interface LobbyProps {
   onCreateRoom: (name: string) => void
   onJoinRoom: (code: string, name: string) => void
-  onStartPoker: () => void
+  onStartGame: (game: string) => void
   onConfirmReady: () => void
 }
 
-export function Lobby({ onCreateRoom, onJoinRoom, onStartPoker, onConfirmReady }: LobbyProps) {
+export function Lobby({ onCreateRoom, onJoinRoom, onStartGame, onConfirmReady }: LobbyProps) {
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
   const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu')
@@ -45,17 +45,29 @@ export function Lobby({ onCreateRoom, onJoinRoom, onStartPoker, onConfirmReady }
 
           {isHost && (
             <div className="space-y-2">
-              <button
-                onClick={onStartPoker}
-                className="w-full py-3 rounded-xl font-black text-lg uppercase tracking-wider
-                           bg-gradient-to-r from-green-600 to-green-500 text-white
-                           hover:from-green-500 hover:to-green-400 transition-all
-                           shadow-lg shadow-green-500/20"
-              >
-                Start Poker
-              </button>
+              <div className="text-xs text-white/40 uppercase tracking-widest mb-2">Choose Game</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => onStartGame('poker')}
+                  className="py-3 rounded-xl font-black text-sm uppercase tracking-wider
+                             bg-gradient-to-r from-green-600 to-green-500 text-white
+                             hover:from-green-500 hover:to-green-400 transition-all
+                             shadow-lg shadow-green-500/20"
+                >
+                  ♠ Poker
+                </button>
+                <button
+                  onClick={() => onStartGame('slots')}
+                  className="py-3 rounded-xl font-black text-sm uppercase tracking-wider
+                             bg-gradient-to-r from-purple-600 to-purple-500 text-white
+                             hover:from-purple-500 hover:to-purple-400 transition-all
+                             shadow-lg shadow-purple-500/20"
+                >
+                  🎰 Slots
+                </button>
+              </div>
               <div className="text-center text-[10px] text-white/30">
-                {players.length === 1 ? 'AI opponent will join automatically' : `${players.length} players ready`}
+                {players.length === 1 ? 'AI opponent joins poker automatically' : `${players.length} players ready`}
               </div>
             </div>
           )}
@@ -87,7 +99,7 @@ export function Lobby({ onCreateRoom, onJoinRoom, onStartPoker, onConfirmReady }
                          bg-clip-text text-transparent mb-2">
             TV CASINO
           </h1>
-          <div className="text-sm text-white/40 tracking-widest uppercase">3D Texas Hold&apos;em</div>
+          <div className="text-sm text-white/40 tracking-widest uppercase">3D Casino Games</div>
           <div className="flex justify-center gap-2 mt-3 text-2xl">
             <span>♠</span><span className="text-red-500">♥</span>
             <span className="text-yellow-500">♦</span><span>♣</span>
