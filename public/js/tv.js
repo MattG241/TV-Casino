@@ -633,16 +633,19 @@ function renderTVPoker(state) {
           const isFolded = state.foldedPlayers?.includes(pid);
           const isWinner = state.winner === pid;
           const hand = isShowdown && state.allHands?.[pid];
+          const handResult = isShowdown && state.handResults?.[pid];
           const roundBet = state.roundBets?.[pid] || 0;
+          const aiTag = p?.isAI ? ' <span style="color:rgba(255,255,255,0.4);font-size:10px">[AI]</span>' : '';
 
           return `
             <div class="tv-poker-seat ${isActive ? 'active' : ''} ${isFolded ? 'folded' : ''} ${isWinner ? 'winner' : ''}">
               <div style="font-size:22px">${AVATARS[p?.avatar] || '😎'}</div>
-              <div style="font-size:13px;font-weight:700">${p?.name || 'Player'}</div>
+              <div style="font-size:13px;font-weight:700">${p?.name || 'Player'}${aiTag}</div>
               <div style="color:var(--gold);font-size:12px">$${p?.chips?.toLocaleString() || 0}</div>
               ${roundBet > 0 ? `<div style="color:var(--green);font-size:11px">Bet: $${roundBet}</div>` : ''}
               ${isFolded ? '<div style="color:var(--red);font-size:11px">FOLDED</div>' : ''}
-              ${isWinner ? '<div style="color:var(--green);font-size:14px;font-weight:800">WINNER!</div>' : ''}
+              ${isWinner ? `<div style="color:var(--green);font-size:14px;font-weight:800">WINNER!</div>` : ''}
+              ${handResult ? `<div style="color:var(--gold);font-size:10px">${handResult.name}</div>` : ''}
               ${hand ? `
                 <div style="display:flex;gap:3px;margin-top:2px;justify-content:center">
                   ${Array.isArray(hand) ? hand.map(c => renderTVCard(c)).join('') : ''}

@@ -596,10 +596,50 @@ function renderPoker(state) {
   const isFolded = state.foldedPlayers?.includes(myId);
   const myRoundBet = state.roundBets?.[myId] || 0;
   const toCall = (state.currentBet || 0) - myRoundBet;
+  const isResult = state.phase === 'result' || state.phase === 'showdown';
+  const bigBlind = state.bigBlind || 20;
+  const minRaise = (state.currentBet || 0) + bigBlind;
+  const maxRaise = myChips + myRoundBet;
+
+  // Build opponent info section
+  const opponents = (state.turnOrder || [])
+    .filter(pid => pid !== myId)
+    .map(pid => {
+      const p = players.find(pl => pl.id === pid);
+      const isTurn = state.currentTurn === state.turnOrder.indexOf(pid);
+      const folded = state.foldedPlayers?.includes(pid);
+      const isWinner = state.winner === pid;
+      const opHand = isResult && state.allHands?.[pid];
+      const handResult = isResult && state.handResults?.[pid];
+      const roundBet = state.roundBets?.[pid] || 0;
+      const aiTag = p?.isAI ? ' <span style="color:var(--text-dim);font-size:10px">[AI]</span>' : '';
+      return `
+        <div class="poker-opponent ${isTurn ? 'active-turn' : ''} ${folded ? 'folded' : ''} ${isWinner ? 'winner' : ''}"
+             style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;
+                    ${isTurn ? 'background:rgba(255,215,0,0.15);border:1px solid rgba(255,215,0,0.3)' : 'background:rgba(255,255,255,0.03)'}">
+          <span style="font-size:20px">${AVATARS[p?.avatar] || '😎'}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              ${p?.name || 'Player'}${aiTag}
+            </div>
+            <div style="font-size:11px;color:var(--gold)">$${p?.chips?.toLocaleString() || 0}${roundBet > 0 ? ` <span style="color:var(--green)">(bet $${roundBet})</span>` : ''}</div>
+          </div>
+          ${folded ? '<span style="color:var(--red);font-size:11px;font-weight:700">FOLDED</span>' : ''}
+          ${isWinner ? '<span style="color:var(--green);font-size:11px;font-weight:700">WINNER</span>' : ''}
+          ${opHand && Array.isArray(opHand) ? `
+            <div style="display:flex;gap:2px">${opHand.map(c => renderCard(c)).join('')}</div>
+            ${handResult ? `<span style="font-size:10px;color:var(--gold)">${handResult.name}</span>` : ''}
+          ` : ''}
+        </div>`;
+    }).join('');
 
   el.innerHTML = `
     <div class="poker-table">
       <div class="pot-display">Pot: $${state.pot || 0}</div>
+
+      ${opponents ? `
+        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px">${opponents}</div>
+      ` : ''}
 
       <div class="hand-label" style="text-align:center">Community Cards</div>
       <div class="community-cards">
@@ -614,10 +654,14 @@ function renderPoker(state) {
         ${myHand.length > 0 ? myHand.map(c => renderCard(c)).join('') :
           '<div style="color:rgba(255,255,255,0.3)">No cards yet</div>'}
       </div>
+      ${isResult && state.handResults?.[myId] ? `
+        <div style="text-align:center;font-size:12px;color:var(--gold);margin-top:4px">${state.handResults[myId].name}</div>
+      ` : ''}
 
-      ${state.phase === 'result' || state.phase === 'showdown' ? `
+      ${isResult ? `
         <div class="bj-result ${state.winner === myId ? 'win' : 'lose'}">
-          ${state.winner === myId ? `YOU WIN $${state.pot}!` : 'Better luck next hand'}
+          ${state.winner === myId ? `YOU WIN $${state.pot}!` :
+            `${players.find(p => p.id === state.winner)?.name || 'Opponent'} wins${state.handResults?.[state.winner] ? ' with ' + state.handResults[state.winner].name : ''}`}
         </div>
       ` : isFolded ? `
         <div class="status-msg" style="background:rgba(255,255,255,0.05);color:var(--text-dim)">You folded</div>
@@ -630,15 +674,19 @@ function renderPoker(state) {
           ` : `
             <button class="btn btn-green btn-sm" onclick="pokerAction('check')">CHECK</button>
           `}
-          <button class="btn btn-gold btn-sm" onclick="pokerAction('raise', pokerRaiseAmount)">RAISE $${pokerRaiseAmount}</button>
+          ${maxRaise > minRaise ? `
+            <button class="btn btn-gold btn-sm" onclick="pokerAction('raise', pokerRaiseAmount)">RAISE $${pokerRaiseAmount}</button>
+          ` : ''}
           <button class="btn btn-purple btn-sm" onclick="pokerAction('allin')">ALL IN</button>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-          <span style="font-size:12px;color:var(--text-dim)">$${state.currentBet || 0}</span>
-          <input type="range" class="raise-slider" min="${(state.currentBet || 0) + 20}" max="${myChips}"
-            value="${pokerRaiseAmount}" oninput="pokerRaiseAmount=parseInt(this.value);this.nextElementSibling.textContent='$'+this.value">
-          <span style="font-size:12px;color:var(--text-dim)">$${pokerRaiseAmount}</span>
-        </div>
+        ${maxRaise > minRaise ? `
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+            <span style="font-size:12px;color:var(--text-dim)">$${minRaise}</span>
+            <input type="range" class="raise-slider" min="${minRaise}" max="${maxRaise}"
+              value="${pokerRaiseAmount}" oninput="pokerRaiseAmount=parseInt(this.value);this.nextElementSibling.textContent='$'+this.value">
+            <span style="font-size:12px;color:var(--text-dim)">$${pokerRaiseAmount}</span>
+          </div>
+        ` : ''}
       ` : `
         <div class="status-msg waiting">
           ${state.phase} - Waiting for ${players.find(p => p.id === state.turnOrder?.[state.currentTurn])?.name || 'other player'}...
