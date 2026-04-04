@@ -814,11 +814,180 @@ let hrBetType = 'win'; // 'win', 'place', 'trifecta'
 let hrExpandedHorse = null;
 let hrTrifecta = [null, null, null];
 let hrTrifectaSlot = 0;
+let hrEntrySubmitted = false;
+let hrHorseName = '';
+let hrSelfieData = null;
+let hrCameraStream = null;
+
+function hrRandomName() {
+  const adj = ['Midnight','Golden','Silver','Thunder','Shadow','Royal','Wild','Lucky','Iron','Crimson','Blazing','Cosmic','Diamond','Velvet','Mystic','Storm','Noble','Dark','Flying','Brave'][Math.floor(Math.random()*20)];
+  const noun = ['Express','Fury','Spirit','Lightning','Arrow','Dream','Champion','Warrior','Legend','Phoenix','Bullet','Rocket','Dancer','Rebel','Phantom','Comet','Blaze','Knight','Star','Wind'][Math.floor(Math.random()*20)];
+  return adj + ' ' + noun;
+}
+
+function hrStartCamera() {
+  const video = document.getElementById('hrSelfieVideo');
+  const canvas = document.getElementById('hrSelfieCanvas');
+  if (!video) return;
+
+  // Use front-facing camera
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 320 } }, audio: false })
+    .then(stream => {
+      hrCameraStream = stream;
+      video.srcObject = stream;
+      video.play();
+      video.style.display = 'block';
+      if (canvas) canvas.style.display = 'none';
+      const btn = document.getElementById('hrCaptureBtn');
+      if (btn) { btn.textContent = 'TAKE SELFIE'; btn.onclick = hrCaptureSelfie; }
+    })
+    .catch(() => {
+      showToast('Camera access denied');
+    });
+}
+
+function hrCaptureSelfie() {
+  const video = document.getElementById('hrSelfieVideo');
+  const canvas = document.getElementById('hrSelfieCanvas');
+  if (!video || !canvas) return;
+
+  canvas.width = 200;
+  canvas.height = 200;
+  const ctx = canvas.getContext('2d');
+  // Center-crop the video to a square
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  const size = Math.min(vw, vh);
+  const sx = (vw - size) / 2;
+  const sy = (vh - size) / 2;
+  // Mirror horizontally for front camera
+  ctx.save();
+  ctx.translate(200, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, sx, sy, size, size, 0, 0, 200, 200);
+  ctx.restore();
+
+  hrSelfieData = canvas.toDataURL('image/jpeg', 0.7);
+
+  // Stop camera
+  if (hrCameraStream) {
+    hrCameraStream.getTracks().forEach(t => t.stop());
+    hrCameraStream = null;
+  }
+  video.style.display = 'none';
+  canvas.style.display = 'block';
+
+  const btn = document.getElementById('hrCaptureBtn');
+  if (btn) { btn.textContent = 'RETAKE'; btn.onclick = hrStartCamera; }
+}
+
+function hrSubmitEntry() {
+  const nameInput = document.getElementById('hrHorseNameInput');
+  const name = nameInput ? nameInput.value.trim() : '';
+  if (!name) return showToast('Enter a horse name!');
+  if (!hrSelfieData) return showToast('Take a selfie first!');
+
+  socket.emit('horseracing:entry', { horseName: name, selfie: hrSelfieData });
+  hrEntrySubmitted = true;
+  hrHorseName = name;
+
+  // Stop camera if still running
+  if (hrCameraStream) {
+    hrCameraStream.getTracks().forEach(t => t.stop());
+    hrCameraStream = null;
+  }
+
+  renderHorseRacing(window._hrState);
+}
 
 function renderHorseRacing(state) {
   const el = document.getElementById('horseracingContent');
   const horses = state.horses || [];
   const myBet = state.bets?.[myId];
+
+  // Reset entry state on new naming phase
+  if (state.phase === 'naming' && !window._hrNamingStarted) {
+    hrEntrySubmitted = false;
+    hrHorseName = '';
+    hrSelfieData = null;
+    window._hrNamingStarted = true;
+  }
+  if (state.phase !== 'naming') {
+    window._hrNamingStarted = false;
+  }
+
+  // ── NAMING PHASE: Enter horse name + take selfie ──
+  if (state.phase === 'naming') {
+    const myEntry = state.playerHorses?.[myId];
+    const alreadyDone = state.namingComplete?.[myId] || hrEntrySubmitted;
+    const activePlayers = Object.keys(state.playerHorses || {});
+    const doneCount = Object.keys(state.namingComplete || {}).length;
+
+    if (alreadyDone) {
+      el.innerHTML = `
+        <div class="hr-naming-screen">
+          <div class="hr-naming-header">
+            <div class="hr-naming-title">JOCKEY REGISTRATION</div>
+            <div class="sb-timer-pill ${state.timer <= 5 ? 'sb-timer-urgent' : ''}">
+              <span class="sb-timer-num">${state.timer}s</span>
+            </div>
+          </div>
+          <div class="hr-entry-confirmed">
+            <div class="hr-entry-tick">&#10003;</div>
+            <div class="hr-entry-name">${hrHorseName || myEntry?.horseName || 'Your Horse'}</div>
+            ${hrSelfieData ? '<img class="hr-entry-selfie-preview" src="'+hrSelfieData+'" alt="Your jockey face">' : ''}
+            <div class="hr-entry-wait">Waiting for other jockeys... (${doneCount}/${activePlayers.length})</div>
+          </div>
+        </div>`;
+    } else {
+      // Don't rebuild camera elements if they already exist (preserves video stream)
+      const existingVideo = el.querySelector('#hrSelfieVideo');
+      if (!existingVideo) {
+        el.innerHTML = `
+          <div class="hr-naming-screen">
+            <div class="hr-naming-header">
+              <div class="hr-naming-title">JOCKEY REGISTRATION</div>
+              <div class="sb-timer-pill ${state.timer <= 5 ? 'sb-timer-urgent' : ''}">
+                <span class="sb-timer-num">${state.timer}s</span>
+              </div>
+            </div>
+            <div class="hr-naming-subtitle">Name your horse and take a selfie to ride it!</div>
+
+            <div class="hr-name-section">
+              <label class="hr-label">HORSE NAME</label>
+              <div class="hr-name-row">
+                <input type="text" id="hrHorseNameInput" class="hr-name-input" placeholder="e.g. Thunder Express" maxlength="24" autocomplete="off" value="${hrHorseName}">
+                <button class="hr-random-btn" onclick="document.getElementById('hrHorseNameInput').value = hrRandomName()">&#127922; RANDOM</button>
+              </div>
+            </div>
+
+            <div class="hr-selfie-section">
+              <label class="hr-label">YOUR JOCKEY FACE</label>
+              <div class="hr-selfie-box">
+                <video id="hrSelfieVideo" class="hr-selfie-video" playsinline autoplay muted style="display:none"></video>
+                <canvas id="hrSelfieCanvas" class="hr-selfie-canvas" style="display:none"></canvas>
+                <div id="hrSelfiePrompt" class="hr-selfie-prompt">
+                  <div class="hr-selfie-icon">&#128247;</div>
+                  <div>Tap below to open camera</div>
+                </div>
+              </div>
+              <button id="hrCaptureBtn" class="hr-capture-btn" onclick="hrStartCamera()">OPEN CAMERA</button>
+            </div>
+
+            <button class="hr-submit-entry-btn" onclick="hrSubmitEntry()">LOCK IN & RIDE!</button>
+            <div class="hr-naming-progress">${doneCount}/${activePlayers.length} jockeys registered</div>
+          </div>`;
+      } else {
+        // Just update timer and progress
+        const timerEl = el.querySelector('.sb-timer-num');
+        if (timerEl) timerEl.textContent = state.timer + 's';
+        const progEl = el.querySelector('.hr-naming-progress');
+        if (progEl) progEl.textContent = `${doneCount}/${activePlayers.length} jockeys registered`;
+      }
+    }
+    window._hrState = state;
+    return;
+  }
 
   if (state.phase === 'betting') {
     const sorted = [...horses].sort((a,b) => a.scratched ? 1 : b.scratched ? -1 : a.odds - b.odds);
@@ -916,7 +1085,7 @@ function renderHorseRacing(state) {
                   ${isFav ? '<span class="sb-fav-tag">FAV</span>' : ''}
                   ${isInTri ? '<span class="sb-tri-tag">' + triLabels[triSlotIdx] + '</span>' : ''}
                 </div>
-                <div class="sb-r-sub">(${h.barrier || origIdx+1}) ${h.weight || 57}kg ${h.jockey || ''}</div>
+                <div class="sb-r-sub">(${h.barrier || origIdx+1}) ${h.weight || 57}kg ${h.playerName ? '<span style="color:#ffd700">&#127941; ' + h.playerName + '</span>' : (h.jockey || '')}</div>
                 <div class="sb-r-form-line">
                   ${h.form && h.form.length > 0 ? h.form.map(f => '<span class="sb-form-num ' + (f===1?'sb-f1':f===2?'sb-f2':f===3?'sb-f3':'') + '">' + f + '</span>').join('') : '<span class="sb-no-form">No form</span>'}
                   <span class="sb-r-style-tag">${h.styleDesc || ''}</span>

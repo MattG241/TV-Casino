@@ -772,16 +772,66 @@ function renderTVHorseRacing(state) {
   }
 
   // Reset phase tracking on new race
-  if (state.phase === 'betting' && lastRacePhase !== 'betting') {
-    lastRacePhase = 'betting';
+  if ((state.phase === 'betting' || state.phase === 'naming') && lastRacePhase !== 'betting' && lastRacePhase !== 'naming') {
+    lastRacePhase = state.phase;
     lastSpokenText = null;
     // Dispose old 3D scene for fresh start
     if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
       Race3D.stopRendering();
       Race3D.dispose();
     }
-    // Force rebuild of betting HTML on new race
+    // Force rebuild of HTML on new race
     el.innerHTML = '';
+  }
+
+  // ── NAMING PHASE: Show jockey registration on TV ──
+  if (state.phase === 'naming') {
+    lastRacePhase = 'naming';
+    const playerHorses = state.playerHorses || {};
+    const namingComplete = state.namingComplete || {};
+    const entries = Object.entries(playerHorses);
+    const doneCount = Object.keys(namingComplete).length;
+
+    el.innerHTML = `
+      <div class="sky-full" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px">
+        <div class="sky-header-bar" style="width:100%;margin-bottom:30px">
+          <div class="sky-hdr-left">
+            <span class="sky-hdr-tab">TAB</span>
+            <span class="sky-hdr-racenum">${state.raceNumber || 1}</span>
+            <div class="sky-hdr-venue">
+              <div class="sky-hdr-venue-name">JOCKEY REGISTRATION</div>
+              <div class="sky-hdr-venue-sub">Name your horse &bull; Take a selfie &bull; Become the jockey!</div>
+            </div>
+          </div>
+          <div class="sky-hdr-right">
+            <div class="sky-hdr-timer ${state.timer <= 10 ? 'urgent' : ''}">${state.timer > 0 ? '-0:' + String(state.timer).padStart(2,'0') : 'OFF'}</div>
+            <div class="sky-hdr-brand">SKY<span>1</span></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;max-width:900px">
+          ${entries.map(([pid, entry]) => {
+            const horse = state.horses[entry.horseIdx];
+            const isDone = namingComplete[pid];
+            return `
+              <div class="tv-naming-card ${isDone ? 'tv-naming-done' : 'tv-naming-waiting'}" style="background:${isDone ? 'rgba(0,200,83,0.1)' : 'rgba(255,255,255,0.05)'};border:2px solid ${isDone ? '#00c853' : 'rgba(255,255,255,0.15)'};border-radius:12px;padding:16px;width:180px;text-align:center">
+                ${entry.selfie ? `<img src="${entry.selfie}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid ${horse?.color || '#fff'};margin-bottom:8px">` :
+                  `<div style="width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-size:32px;border:3px solid ${horse?.color || '#fff'}">${isDone ? '&#128039;' : '&#128247;'}</div>`}
+                <div style="font-weight:700;font-size:14px;color:${horse?.color || '#fff'}">${entry.playerName || 'Player'}</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-top:4px">${isDone ? (horse?.name || 'Ready!') : 'Choosing...'}</div>
+                <div style="font-size:18px;margin-top:6px">${isDone ? '&#10003;' : '&#9203;'}</div>
+              </div>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:20px;font-size:16px;color:rgba(255,255,255,0.5)">${doneCount}/${entries.length} jockeys registered</div>
+      </div>
+    `;
+
+    // Spoken commentary for naming phase
+    if (state.speak && state.speak !== lastSpokenText) {
+      lastSpokenText = state.speak;
+      CasinoAudio.speak(state.speak);
+    }
+    return;
   }
 
   // ── Sky Racing split-screen betting board ──
@@ -866,8 +916,9 @@ function renderTVHorseRacing(state) {
         return `
           <div class="sky-odds-row ${i === 0 ? 'sky-fav' : ''} ${betOnThis > 0 ? 'sky-backed' : ''}">
             <span class="sky-or-num">${origIdx+1}</span>
+            ${h.jockeySelfie ? `<img src="${h.jockeySelfie}" class="sky-or-selfie" style="width:24px;height:24px;border-radius:50%;object-fit:cover;border:2px solid ${h.color};flex-shrink:0">` : ''}
             <span class="sky-or-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds.toFixed(2)}</span>
-            <span class="sky-or-name" style="color:${h.color}">${h.name}${h.jockey ? `<br><span class="sky-or-jockey">${h.jockey}</span>` : ''}</span>
+            <span class="sky-or-name" style="color:${h.color}">${h.name}${h.playerName ? `<br><span class="sky-or-jockey" style="color:#ffd700">&#127941; ${h.playerName}</span>` : h.jockey ? `<br><span class="sky-or-jockey">${h.jockey}</span>` : ''}</span>
             <span class="sky-or-style">${h.styleDesc || ''}${h.temperament ? `<br><span class="sky-or-temp">${h.temperament}</span>` : ''}</span>
             <span class="sky-or-barrier">(${barrier})</span>
           </div>`;
@@ -974,8 +1025,8 @@ function renderTVHorseRacing(state) {
         return `
         <div class="sky-runner ${isWinner ? 'sky-runner-winner' : ''} ${isSecond ? 'sky-runner-second' : ''} ${isThird ? 'sky-runner-third' : ''} ${pos === 0 && isRacing ? 'sky-runner-lead' : ''} ${isBlocked ? 'sky-runner-blocked' : ''}">
           <span class="sky-r-pos">${pos + 1}</span>
-          <span class="sky-r-silk" style="background:${h.color}">${origIdx+1}</span>
-          <span class="sky-r-name">${h.name.length > 14 ? h.name.substring(0,12)+'..' : h.name}${isBlocked && isRacing ? ' <span class="sky-blocked-tag">BOXED</span>' : ''}</span>
+          ${h.jockeySelfie ? `<img src="${h.jockeySelfie}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;border:2px solid ${h.color};flex-shrink:0">` : `<span class="sky-r-silk" style="background:${h.color}">${origIdx+1}</span>`}
+          <span class="sky-r-name">${h.name.length > 14 ? h.name.substring(0,12)+'..' : h.name}${h.playerName ? ' <span style="color:#ffd700;font-size:9px">(' + h.playerName + ')</span>' : ''}${isBlocked && isRacing ? ' <span class="sky-blocked-tag">BOXED</span>' : ''}</span>
           ${marginText && pos > 0 ? `<span class="sky-r-margin">${marginText}</span>` : ''}
           ${isRacing ? `<span class="sky-r-effort" title="Effort"><span class="sky-effort-bar" style="width:${effort}%"></span></span>` : ''}
           <span class="sky-r-odds">$${(h.lockedOdds||h.odds).toFixed(2)}</span>

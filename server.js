@@ -1406,10 +1406,10 @@ const games = {
       }
 
       room.gameState = {
-        phase: 'betting',
+        phase: 'naming',
         horses,
         bets: {},
-        timer: 25,
+        timer: 40,
         winner: null,
         raceNumber: room._raceNumber,
         distance,
@@ -1419,14 +1419,107 @@ const games = {
         trackFactor: trackCondition.factor,
         trackFavours: trackCondition.favours,
         trackBias: trackBias.name,
-        commentary: `Race ${room._raceNumber} — ${distance}m — ${trackCondition.name} — ${horses.filter(h=>!h.scratched).length} runners`,
-        speak: `Race ${room._raceNumber}. ${distance} meters. Track rated ${trackCondition.name.replace(/(\d)/, ' $1')}. ${numHorses} runners.${trackBias.name !== 'Neutral' ? ` Track bias favouring ${trackBias.name.toLowerCase()} runners.` : ''} Place your bets now.`,
+        commentary: `Race ${room._raceNumber} — Name your horse and take a selfie!`,
+        speak: `Race ${room._raceNumber}. Name your horse and take a selfie to become the jockey!`,
+        // Player-horse assignments: { playerId: { horseName, selfie (base64), horseIdx } }
+        playerHorses: {},
+        // Track which players have submitted
+        namingComplete: {},
       };
 
+      // Assign one horse to each player (first N horses go to players)
+      const activePlayers = room.players.filter(p => p.socket && p.socket.connected && !p.isAI);
+      activePlayers.forEach((p, idx) => {
+        if (idx < horses.length) {
+          room.gameState.playerHorses[p.id] = { horseIdx: idx, horseName: null, selfie: null, playerName: p.name };
+        }
+      });
+
+      broadcastToRoom(room, 'game:state', { game: 'horseracing', state: room.gameState });
+      // Start naming timer (40 seconds, then auto-transition to betting)
+      this._startNamingTimer(room);
+    },
+
+    // ── Submit horse name + selfie from a player ──
+    submitHorseEntry(room, playerId, horseName, selfie) {
+      const gs = room.gameState;
+      if (!gs || gs.phase !== 'naming') return;
+      const entry = gs.playerHorses[playerId];
+      if (!entry) return;
+
+      // Apply the custom horse name
+      if (horseName && horseName.trim()) {
+        const name = horseName.trim().substring(0, 24);
+        entry.horseName = name;
+        gs.horses[entry.horseIdx].name = name;
+        gs.horses[entry.horseIdx].playerName = entry.playerName;
+      }
+
+      // Store selfie (base64 data URL, capped at 200KB)
+      if (selfie && typeof selfie === 'string' && selfie.startsWith('data:image') && selfie.length < 300000) {
+        entry.selfie = selfie;
+        gs.horses[entry.horseIdx].jockeySelfie = selfie;
+        gs.horses[entry.horseIdx].playerName = entry.playerName;
+      }
+
+      gs.namingComplete[playerId] = true;
+
+      // Check if all players have submitted
+      const activePlayers = room.players.filter(p => p.socket && p.socket.connected && !p.isAI);
+      const allDone = activePlayers.every(p => gs.namingComplete[p.id] || !gs.playerHorses[p.id]);
+
+      broadcastToRoom(room, 'game:state', { game: 'horseracing', state: gs });
+
+      if (allDone) {
+        this._transitionToBetting(room);
+      }
+    },
+
+    _startNamingTimer(room) {
+      if (room._namingTimer) clearInterval(room._namingTimer);
+      let timer = 40;
+      room._namingTimer = setInterval(() => {
+        if (!room.gameState || room.gameState.phase !== 'naming' || !rooms.has(room.code)) {
+          clearInterval(room._namingTimer);
+          room._namingTimer = null;
+          return;
+        }
+        timer--;
+        room.gameState.timer = timer;
+        broadcastToRoom(room, 'game:timer', { timer });
+        if (timer <= 0) {
+          clearInterval(room._namingTimer);
+          room._namingTimer = null;
+          this._transitionToBetting(room);
+        }
+      }, 1000);
+    },
+
+    _transitionToBetting(room) {
+      const gs = room.gameState;
+      if (!gs || gs.phase !== 'naming') return;
+      if (room._namingTimer) { clearInterval(room._namingTimer); room._namingTimer = null; }
+
+      // Any players who didn't submit get default names
+      for (const [pid, entry] of Object.entries(gs.playerHorses)) {
+        if (!entry.horseName) {
+          // Keep the auto-generated name
+          entry.horseName = gs.horses[entry.horseIdx].name;
+        }
+        // Mark all player horses with playerName
+        gs.horses[entry.horseIdx].playerName = entry.playerName;
+      }
+
+      gs.phase = 'betting';
+      gs.timer = 25;
+      gs.commentary = `Race ${gs.raceNumber} — ${gs.distance}m — ${gs.trackCondition} — ${gs.horses.filter(h=>!h.scratched).length} runners`;
+      gs.speak = `Race ${gs.raceNumber}. ${gs.distance} meters. Track rated ${gs.trackCondition.replace(/(\d)/, ' $1')}. ${gs.horses.length} runners.${gs.trackBias !== 'Neutral' ? ` Track bias favouring ${gs.trackBias.toLowerCase()} runners.` : ''} Place your bets now.`;
+
       // Random late scratching (15% chance per race, max 1-2 horses, never scratch all)
+      const numHorses = gs.horses.length;
       if (numHorses > 5 && Math.random() < 0.15) {
         const scratchCount = Math.random() < 0.7 ? 1 : 2;
-        const scratchable = horses.filter(h => h.baseOdds > 5);
+        const scratchable = gs.horses.filter(h => h.baseOdds > 5 && !h.playerName);
         for (let s = 0; s < scratchCount && scratchable.length > 0; s++) {
           const idx = Math.floor(Math.random() * scratchable.length);
           const scratched = scratchable.splice(idx, 1)[0];
@@ -1462,7 +1555,6 @@ const games = {
         }
         for (const horse of room.gameState.horses) {
           if (horse.scratched) continue;
-          // Gentler random drift (±0.3 instead of ±0.6)
           const drift = (Math.random() - 0.5) * 0.3;
           horse.odds = Math.round(Math.max(1.5, Math.min(50, horse.odds + drift)) * 10) / 10;
           horse.placeOdds = Math.round(Math.max(1.1, horse.odds * 0.35) * 100) / 100;
@@ -2393,6 +2485,11 @@ io.on('connection', (socket) => {
     if (currentRoom?.currentGame === 'poker') games.poker.action(currentRoom, playerId, data.action, data.amount);
   });
 
+  socket.on('horseracing:entry', (data) => {
+    if (!data || typeof data !== 'object') return;
+    if (currentRoom?.currentGame === 'horseracing') games.horseracing.submitHorseEntry(currentRoom, playerId, data.horseName, data.selfie);
+  });
+
   socket.on('horseracing:bet', (data) => {
     if (!data || typeof data !== 'object') return;
     if (currentRoom?.currentGame === 'horseracing') games.horseracing.placeBet(currentRoom, playerId, data.horseId, data.amount, data.betType, data.trifecta);
@@ -2422,6 +2519,7 @@ io.on('connection', (socket) => {
           if (room._voteTimerInterval) clearInterval(room._voteTimerInterval);
           if (room._raceInterval) clearInterval(room._raceInterval);
           if (room._oddsInterval) clearInterval(room._oddsInterval);
+          if (room._namingTimer) clearInterval(room._namingTimer);
           clearTimeout(room._betBroadcastTimeout);
           rooms.delete(room.code);
         } else {
@@ -2446,6 +2544,7 @@ setInterval(() => {
       if (room._voteTimerInterval) clearInterval(room._voteTimerInterval);
       if (room._raceInterval) clearInterval(room._raceInterval);
       if (room._oddsInterval) clearInterval(room._oddsInterval);
+      if (room._namingTimer) clearInterval(room._namingTimer);
       clearTimeout(room._betBroadcastTimeout);
       room.players.forEach(p => { if (p._disconnectTimer) clearTimeout(p._disconnectTimer); });
       rooms.delete(code);

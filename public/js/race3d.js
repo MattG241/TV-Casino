@@ -412,8 +412,23 @@ const Race3D = (() => {
     }
   }
 
+  // ── Selfie texture cache ────────────────────────────────────────────────
+  const selfieTextureCache = {};
+
+  function loadSelfieTexture(selfieDataUrl) {
+    if (selfieTextureCache[selfieDataUrl]) return selfieTextureCache[selfieDataUrl];
+    const img = new Image();
+    img.src = selfieDataUrl;
+    const tex = new THREE.Texture(img);
+    img.onload = () => { tex.needsUpdate = true; };
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    selfieTextureCache[selfieDataUrl] = tex;
+    return tex;
+  }
+
   // ── Create horse from GLB or fallback geometry ─────────────────────────
-  function createHorse(color, laneIndex, totalLanes) {
+  function createHorse(color, laneIndex, totalLanes, selfieDataUrl, playerName) {
     const group = new THREE.Group();
     const col = new THREE.Color(color);
     let mixer = null;
@@ -451,6 +466,45 @@ const Race3D = (() => {
         action.play();
         action.paused = true; // Start paused, control speed per phase
       }
+
+      // ── Add jockey on top of GLB horse ──
+      const jockeyGroup = new THREE.Group();
+      jockeyGroup.scale.set(50, 50, 50); // Counteract the 0.02 horse scale
+      jockeyGroup.position.set(0, 90, 0); // Sit on top of horse (in horse-local units)
+      jockeyGroup.rotation.y = -Math.PI / 2; // Face forward
+
+      const jCol = col.clone().offsetHSL(0.15, 0.2, 0.1);
+      const jBody = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6),
+        new THREE.MeshLambertMaterial({ color: jCol }));
+      jBody.scale.set(0.8, 1.2, 0.7);
+      jBody.position.set(-0.1, 0.0, 0);
+      jockeyGroup.add(jBody);
+
+      // Jockey head — use selfie texture if available
+      let jHeadMat;
+      if (selfieDataUrl) {
+        const selfieTex = loadSelfieTexture(selfieDataUrl);
+        jHeadMat = new THREE.MeshBasicMaterial({ map: selfieTex });
+      } else {
+        jHeadMat = new THREE.MeshLambertMaterial({ color: 0xf5c9a0 });
+      }
+      const headSize = selfieDataUrl ? 0.22 : 0.12;
+      const jHead = new THREE.Mesh(new THREE.SphereGeometry(headSize, 12, 12), jHeadMat);
+      jHead.position.set(0.0, 0.3, 0);
+      jockeyGroup.add(jHead);
+      group._jockeyHead = jHead;
+
+      // Jockey arms
+      [-0.18, 0.18].forEach(zOff => {
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.35, 6),
+          new THREE.MeshLambertMaterial({ color: jCol }));
+        arm.position.set(0.1, 0.05, zOff);
+        arm.rotation.z = 0.8;
+        jockeyGroup.add(arm);
+      });
+
+      model.add(jockeyGroup);
+      group._jockeyGroup = jockeyGroup;
     } else {
       // Fallback: simple geometry horse
       const bodyMat = new THREE.MeshLambertMaterial({ color: col });
@@ -521,19 +575,62 @@ const Race3D = (() => {
         legs.push(legG);
       });
 
-      // Jockey
+      // Jockey body
       const jCol = col.clone().offsetHSL(0.15, 0.2, 0.1);
       const jBody = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6),
         new THREE.MeshLambertMaterial({ color: jCol }));
       jBody.scale.set(0.8, 1.2, 0.7);
       jBody.position.set(-0.1, 2.35, 0);
       group.add(jBody);
-      const jHead = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6),
-        new THREE.MeshLambertMaterial({ color: 0xf5c9a0 }));
+
+      // Jockey head — use selfie texture if available
+      let jHeadMat;
+      if (selfieDataUrl) {
+        const selfieTex = loadSelfieTexture(selfieDataUrl);
+        jHeadMat = new THREE.MeshBasicMaterial({ map: selfieTex });
+      } else {
+        jHeadMat = new THREE.MeshLambertMaterial({ color: 0xf5c9a0 });
+      }
+      const headSize = selfieDataUrl ? 0.22 : 0.12;
+      const jHead = new THREE.Mesh(new THREE.SphereGeometry(headSize, 12, 12), jHeadMat);
       jHead.position.set(0.0, 2.65, 0);
       group.add(jHead);
+      group._jockeyHead = jHead;
+
+      // Jockey arms
+      [-0.18, 0.18].forEach(zOff => {
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.35, 6),
+          new THREE.MeshLambertMaterial({ color: jCol }));
+        arm.position.set(0.1, 2.4, zOff);
+        arm.rotation.z = 0.8;
+        group.add(arm);
+      });
 
       group._fallbackLegs = legs;
+    }
+
+    // ── Player name label (floating below number) ──
+    if (playerName) {
+      const nameCanvas = document.createElement('canvas');
+      nameCanvas.width = 256; nameCanvas.height = 64;
+      const nCtx = nameCanvas.getContext('2d');
+      nCtx.fillStyle = 'rgba(0,0,0,0.6)';
+      nCtx.beginPath();
+      nCtx.roundRect(4, 4, 248, 56, 8);
+      nCtx.fill();
+      nCtx.fillStyle = '#ffffff';
+      nCtx.font = 'bold 24px Arial';
+      nCtx.textAlign = 'center';
+      nCtx.textBaseline = 'middle';
+      nCtx.fillText(playerName.substring(0, 14), 128, 32);
+      const nameTex = new THREE.CanvasTexture(nameCanvas);
+      const nameSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: nameTex, transparent: true })
+      );
+      nameSprite.scale.set(3.0, 0.75, 1);
+      nameSprite.position.set(0, 5.2, 0);
+      group.add(nameSprite);
+      group._nameSprite = nameSprite;
     }
 
     // ── Saddle cloth number (floating above horse) ──
@@ -666,7 +763,7 @@ const Race3D = (() => {
     // Sync horse count
     while (horses3d.length < horsesData.length) {
       const i = horses3d.length;
-      horses3d.push(createHorse(horsesData[i].color, i, horsesData.length));
+      horses3d.push(createHorse(horsesData[i].color, i, horsesData.length, horsesData[i].jockeySelfie, horsesData[i].playerName));
     }
     while (horses3d.length > horsesData.length) {
       const rem = horses3d.pop();
@@ -850,6 +947,11 @@ const Race3D = (() => {
       renderer.dispose();
     }
     horses3d = [];
+    // Clear selfie texture cache
+    for (const key of Object.keys(selfieTextureCache)) {
+      selfieTextureCache[key].dispose();
+      delete selfieTextureCache[key];
+    }
     scene = null; camera = null; renderer = null;
     trackPoints = []; trackTangents = [];
     initialized = false;
