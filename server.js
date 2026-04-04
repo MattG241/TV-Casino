@@ -73,6 +73,8 @@ function playerList(room) {
     isHost: p.id === room.hostId,
     avatar: p.avatar,
     isAI: p.isAI || false,
+    selfie: p.selfie || null,
+    horseName: p.horseName || null,
   }));
 }
 
@@ -1244,9 +1246,11 @@ const games = {
     start(room) {
       if (room.currentGame !== 'horseracing') return;
       const ALL_COLORS = ['#c0392b','#2980b9','#d4a843','#1a1a2e','#27ae60','#8e44ad','#e67e22','#16a085','#e84393','#636e72','#fdcb6e','#00b894','#6c5ce7','#d63031','#0984e3','#a29bfe'];
-      const numHorses = 4 + Math.floor(Math.random() * 13); // 4 to 16
+      const humanPlayers = room.players.filter(p => !p.isAI);
+      const numAI = Math.max(4, 4 + Math.floor(Math.random() * 9)); // 4-12 AI horses
+      const numHorses = Math.min(16, humanPlayers.length + numAI);
       const colors = ALL_COLORS.slice(0, numHorses);
-      const usedNames = new Set();
+      const usedNames = new Set(humanPlayers.filter(p => p.horseName).map(p => p.horseName));
       const baseOdds = generateBaseOdds(numHorses);
       const DISTANCES = [1000, 1100, 1200, 1400, 1600, 1800, 2000, 2200, 2400, 3200];
       const distance = DISTANCES[Math.floor(Math.random() * DISTANCES.length)];
@@ -1258,7 +1262,12 @@ const games = {
       // Assign running styles weighted by odds (favourites more likely frontrunner/stalker)
       const styleKeys = Object.keys(this._STYLES);
       const usedJockeys = new Set();
+      // Reserve jockey name slots for human players
+      humanPlayers.forEach(p => usedJockeys.add(p.name));
       const horses = colors.map((color, i) => {
+        // First N entries are assigned to human players
+        const playerOwner = i < humanPlayers.length ? humanPlayers[i] : null;
+
         let style;
         if (baseOdds[i] < 5) {
           style = styleKeys[Math.floor(Math.random() * 2)];
@@ -1277,15 +1286,19 @@ const games = {
           temp = temps[Math.floor(Math.random() * temps.length)];
         }
 
-        // Assign jockey — better jockeys on shorter-odds horses
+        // Assign jockey — player horses use the player as jockey
         let jockey;
-        const jockeyPool = this._JOCKEY_NAMES.filter(j => !usedJockeys.has(j));
-        if (baseOdds[i] < 5 && jockeyPool.length > 3) {
-          jockey = jockeyPool[Math.floor(Math.random() * 3)]; // top 3 available
+        if (playerOwner) {
+          jockey = playerOwner.name;
         } else {
-          jockey = jockeyPool[Math.floor(Math.random() * jockeyPool.length)] || 'A. Rider';
+          const jockeyPool = this._JOCKEY_NAMES.filter(j => !usedJockeys.has(j));
+          if (baseOdds[i] < 5 && jockeyPool.length > 3) {
+            jockey = jockeyPool[Math.floor(Math.random() * 3)]; // top 3 available
+          } else {
+            jockey = jockeyPool[Math.floor(Math.random() * jockeyPool.length)] || 'A. Rider';
+          }
+          usedJockeys.add(jockey);
         }
-        usedJockeys.add(jockey);
 
         // Jockey skill (0.7-1.0) — better jockeys get higher skill
         const jockeyIdx = this._JOCKEY_NAMES.indexOf(jockey);
@@ -1308,9 +1321,14 @@ const games = {
         // Place odds (~35% of win odds, min 1.10)
         const placeOdds = Math.round(Math.max(1.1, baseOdds[i] * 0.35) * 100) / 100;
 
+        // Horse name: use player's horseName if they set one, else generate
+        const horseName = playerOwner?.horseName
+          ? playerOwner.horseName
+          : generateHorseName(usedNames); // generateHorseName adds to usedNames automatically
+
         return {
           id: i + 1,
-          name: generateHorseName(usedNames),
+          name: horseName,
           color,
           baseOdds: baseOdds[i],
           odds: baseOdds[i],
@@ -1333,6 +1351,9 @@ const games = {
           bravery: temp.bravery,
           jockey,
           jockeySkill,
+          // ── Player association (if human player owns this horse) ──
+          playerId: playerOwner?.id || null,
+          jockeySelfie: playerOwner?.selfie || null,
           // ── AI state (updated each tick) ──
           ai: {
             effort: 0.5,          // 0=cruising, 1=full effort. Jockey controls this
@@ -2170,12 +2191,13 @@ io.on('connection', (socket) => {
 
   socket.on('room:join', (data) => {
     if (!data || typeof data !== 'object') return;
-    const { code, playerName, avatar } = data;
+    const { code, playerName, avatar, selfie, horseName } = data;
     const room = getRoom(code);
     if (!room) return socket.emit('room:error', { message: 'Room not found' });
     if (room.players.length >= 8) return socket.emit('room:error', { message: 'Room is full' });
     playerId = uuidv4();
-    const player = { id: playerId, name: playerName, chips: 1000, socket, avatar: avatar || 0 };
+    const selfieData = typeof selfie === 'string' && selfie.startsWith('data:image') && selfie.length < 120000 ? selfie : null;
+    const player = { id: playerId, name: playerName, chips: 1000, socket, avatar: avatar || 0, selfie: selfieData, horseName: (horseName || '').substring(0, 20) || null };
     room.players.push(player);
     currentRoom = room;
     socket.emit('room:joined', { code: room.code, playerId, players: playerList(room), currentGame: room.currentGame });

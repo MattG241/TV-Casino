@@ -198,6 +198,125 @@ body {
   animation: goldPulse 3s ease infinite;
 }
 
+/* ── Selfie Screen ────────────────────────────────────────────────────── */
+@keyframes selfiePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(201,168,76,0.4); } 50% { box-shadow: 0 0 0 8px rgba(201,168,76,0); } }
+@keyframes selfieRing { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+.selfie-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 16px 24px;
+  gap: 14px;
+}
+
+.selfie-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--gold);
+  letter-spacing: 3px;
+  text-align: center;
+}
+
+.selfie-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: -8px;
+}
+
+.selfie-cam-area {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--gold);
+  background: #111;
+  animation: selfiePulse 2s ease infinite;
+}
+
+.selfie-cam-area video,
+.selfie-cam-area img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.selfie-cam-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(201,168,76,0.5);
+  pointer-events: none;
+  animation: selfieRing 1.5s ease infinite;
+}
+
+.selfie-btns {
+  display: flex;
+  gap: 12px;
+}
+
+.selfie-snap-btn, .selfie-retake-btn {
+  padding: 12px 28px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.selfie-horse-name-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.selfie-horse-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--gold);
+}
+
+.selfie-horse-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-gold);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 17px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+}
+
+.selfie-horse-input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-glow);
+}
+
+.selfie-go-btn {
+  font-size: 17px;
+  padding: 16px;
+  width: 100%;
+  animation: goldPulse 2s ease infinite;
+}
+
+.selfie-skip-btn {
+  font-size: 13px;
+  padding: 10px;
+  width: 100%;
+  opacity: 0.6;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
 /* ── Room Header ──────────────────────────────────────────────────────── */
 .room-header {
   display: flex;
@@ -975,6 +1094,8 @@ body {
 .sb-r-name-row { display: flex; align-items: center; gap: 4px; }
 .sb-r-name { font-weight: 800; font-size: 13px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-fav-tag { font-size: 8px; background: var(--green); color: #fff; padding: 1px 5px; border-radius: 3px; font-weight: 800; flex-shrink: 0; }
+.sb-my-horse-tag { font-size: 8px; background: var(--gold); color: #111; padding: 1px 5px; border-radius: 3px; font-weight: 800; flex-shrink: 0; }
+.sb-my-horse { border-left: 3px solid var(--gold) !important; background: rgba(201,168,76,0.05) !important; }
 .sb-r-sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
 
 .sb-r-form-line { display: flex; align-items: center; gap: 3px; margin-top: 3px; }

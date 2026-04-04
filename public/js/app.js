@@ -12,6 +12,10 @@ let selectedAvatar = 0;
 let currentGame = null;
 let players = [];
 let myVote = null;
+let mySelfie = null;      // base64 JPEG dataURL
+let myHorseName = '';
+let pendingRoomCode = '';
+let selfieStream = null;
 
 const AVATARS = ['😎', '🤠', '👑', '🎩', '🦊', '🐺', '🦁', '🐲', '💀', '🤖', '👽', '🎭'];
 const SUIT_SYMBOLS = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
@@ -67,7 +71,8 @@ function showToast(msg) {
 function saveSession() {
   try {
     localStorage.setItem('tvCasinoSession', JSON.stringify({
-      roomCode, playerId: myId, playerName: myName, avatar: selectedAvatar, ts: Date.now()
+      roomCode, playerId: myId, playerName: myName, avatar: selectedAvatar,
+      selfie: mySelfie, horseName: myHorseName, ts: Date.now()
     }));
   } catch (e) {}
 }
@@ -84,9 +89,11 @@ function tryRejoin() {
     // Expire after 2 hours
     if (Date.now() - s.ts > 2 * 60 * 60 * 1000) { clearSession(); return false; }
     if (!s.roomCode || !s.playerId) return false;
-    socket.emit('room:rejoin', { code: s.roomCode, existingPlayerId: s.playerId });
     myName = s.playerName || 'Player';
     selectedAvatar = s.avatar || 0;
+    mySelfie = s.selfie || null;
+    myHorseName = s.horseName || '';
+    socket.emit('room:rejoin', { code: s.roomCode, existingPlayerId: s.playerId, selfie: mySelfie, horseName: myHorseName });
     return true;
   } catch (e) { return false; }
 }
@@ -121,7 +128,105 @@ function joinRoom() {
   myName = document.getElementById('playerName').value.trim() || 'Player';
   const code = document.getElementById('roomCode').value.trim().toUpperCase();
   if (code.length !== 4) return showToast('Enter a 4-letter code');
-  socket.emit('room:join', { code, playerName: myName, avatar: selectedAvatar });
+  pendingRoomCode = code;
+  showScreen('selfieScreen');
+  initSelfieCamera();
+}
+
+// ── Selfie Flow ──────────────────────────────────────────────────────────
+
+function initSelfieCamera() {
+  const video = document.getElementById('selfieVideo');
+  const img = document.getElementById('selfieImg');
+  const snapBtn = document.getElementById('selfieSnapBtn');
+  const retakeBtn = document.getElementById('selfieRetakeBtn');
+  video.style.display = 'block';
+  img.style.display = 'none';
+  snapBtn.style.display = '';
+  retakeBtn.style.display = 'none';
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('Camera not available — skip photo');
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 240, height: 240 }, audio: false })
+    .then(stream => {
+      selfieStream = stream;
+      video.srcObject = stream;
+    })
+    .catch(() => {
+      showToast('Camera permission denied — skip photo');
+    });
+}
+
+function stopSelfieCamera() {
+  if (selfieStream) {
+    selfieStream.getTracks().forEach(t => t.stop());
+    selfieStream = null;
+  }
+}
+
+function captureSelfie() {
+  const video = document.getElementById('selfieVideo');
+  const canvas = document.getElementById('selfieCanvas');
+  const img = document.getElementById('selfieImg');
+  const snapBtn = document.getElementById('selfieSnapBtn');
+  const retakeBtn = document.getElementById('selfieRetakeBtn');
+
+  const size = 240;
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  // Draw video frame, cropped square, then clip to circle
+  const vw = video.videoWidth || size;
+  const vh = video.videoHeight || size;
+  const side = Math.min(vw, vh);
+  const sx = (vw - side) / 2;
+  const sy = (vh - side) / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
+  ctx.restore();
+
+  mySelfie = canvas.toDataURL('image/jpeg', 0.65);
+
+  // Show preview
+  img.src = mySelfie;
+  img.style.display = 'block';
+  video.style.display = 'none';
+  snapBtn.style.display = 'none';
+  retakeBtn.style.display = '';
+  stopSelfieCamera();
+}
+
+function retakeSelfie() {
+  mySelfie = null;
+  initSelfieCamera();
+}
+
+function skipSelfie() {
+  mySelfie = null;
+  stopSelfieCamera();
+  doJoinRoom();
+}
+
+function completeSelfie() {
+  myHorseName = (document.getElementById('horseNameInput').value.trim() || myName + "'s Horse").substring(0, 20);
+  stopSelfieCamera();
+  doJoinRoom();
+}
+
+function doJoinRoom() {
+  socket.emit('room:join', {
+    code: pendingRoomCode,
+    playerName: myName,
+    avatar: selectedAvatar,
+    selfie: mySelfie,
+    horseName: myHorseName,
+  });
 }
 
 socket.on('room:joined', (data) => {
@@ -820,6 +925,12 @@ function renderHorseRacing(state) {
   const horses = state.horses || [];
   const myBet = state.bets?.[myId];
 
+  // Auto-select the player's own horse if they haven't picked yet
+  if (state.phase === 'betting' && !hrSelectedHorse && !myBet) {
+    const myHorse = horses.find(h => h.playerId === myId);
+    if (myHorse) hrSelectedHorse = myHorse.id;
+  }
+
   if (state.phase === 'betting') {
     const sorted = [...horses].sort((a,b) => a.scratched ? 1 : b.scratched ? -1 : a.odds - b.odds);
     const fav = sorted.find(h => !h.scratched);
@@ -905,15 +1016,17 @@ function renderHorseRacing(state) {
           const placeOdds = (h.placeOdds || Math.max(1.1, h.odds * 0.35)).toFixed(2);
           const isWinSel = isSel && hrBetType === 'win';
           const isPlaceSel = isSel && hrBetType === 'place';
+          const isMyHorse = h.playerId === myId;
 
           return `
-          <div class="sb-runner ${isSel ? 'sb-selected' : ''} ${isInTri ? 'sb-tri-selected' : ''}">
+          <div class="sb-runner ${isSel ? 'sb-selected' : ''} ${isInTri ? 'sb-tri-selected' : ''} ${isMyHorse ? 'sb-my-horse' : ''}">
             <div class="sb-r-main" onclick="hrExpandedHorse = hrExpandedHorse===${h.id} ? null : ${h.id}; renderHorseRacing(window._hrState)">
               <span class="sb-r-num" style="background:${h.color}">${origIdx+1}</span>
               <div class="sb-r-info">
                 <div class="sb-r-name-row">
-                  <span class="sb-r-name">${h.name}</span>
+                  <span class="sb-r-name">${isMyHorse ? '⭐ ' : ''}${h.name}</span>
                   ${isFav ? '<span class="sb-fav-tag">FAV</span>' : ''}
+                  ${isMyHorse ? '<span class="sb-my-horse-tag">YOUR HORSE</span>' : ''}
                   ${isInTri ? '<span class="sb-tri-tag">' + triLabels[triSlotIdx] + '</span>' : ''}
                 </div>
                 <div class="sb-r-sub">(${h.barrier || origIdx+1}) ${h.weight || 57}kg ${h.jockey || ''}</div>

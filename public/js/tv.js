@@ -16,6 +16,8 @@ let currentGame = null;
 let lastRoulettePhase = null;
 let floatingPositions = {};
 let floatAnimFrameId = null;
+// Map of playerId → selfie dataUrl (populated from players:update)
+let playerSelfies = {};
 
 // Fullscreen disabled — Smart TVs don't support the Fullscreen API
 
@@ -174,6 +176,12 @@ socket.on('room:error', (data) => {
 socket.on('players:update', (data) => {
   const prevCount = players.length;
   players = data;
+  // Cache selfie images from player data
+  data.forEach(p => {
+    if (p.selfie && !playerSelfies[p.id]) {
+      playerSelfies[p.id] = p.selfie;
+    }
+  });
   renderPlayers();
   updateFloatingPlayers();
   if (data.length > prevCount) CasinoAudio.playerJoin();
@@ -692,6 +700,19 @@ let lastRacePhase = null;
 let lastSpokenText = null;
 const SILK_COLORS = ['#c0392b','#2980b9','#d4a843','#1a1a2e','#27ae60','#8e44ad','#e67e22','#16a085','#e84393','#636e72','#fdcb6e','#00b894','#6c5ce7','#d63031','#0984e3','#a29bfe'];
 
+// Build { horseIndex: selfieDataUrl } map for Race3D
+function buildSelfieMap(horses) {
+  const map = {};
+  (horses || []).forEach((h, i) => {
+    if (h.playerId && playerSelfies[h.playerId]) {
+      map[i] = playerSelfies[h.playerId];
+    } else if (h.jockeySelfie) {
+      map[i] = h.jockeySelfie;
+    }
+  });
+  return map;
+}
+
 function renderTVHorseRacing(state) {
   const el = document.getElementById('tvHorseracingContent');
   const horses = state.horses || [];
@@ -854,6 +875,7 @@ function renderTVHorseRacing(state) {
 
     if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
       Race3D.updateHorses(horses, 'betting');
+      Race3D.setHorseSelfies(buildSelfieMap(horses));
     }
     return;
   }
@@ -913,6 +935,7 @@ function renderTVHorseRacing(state) {
   // Update 3D horses
   if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
     Race3D.updateHorses(horses, state.phase);
+    Race3D.setHorseSelfies(buildSelfieMap(horses));
   }
 
   // Update sidebar — show live positions with margins

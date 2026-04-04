@@ -412,6 +412,206 @@ const Race3D = (() => {
     }
   }
 
+  // ── Build face canvas texture (selfie or skin-colour placeholder) ────────
+  function makeFaceCanvas(selfieDataUrl) {
+    const size = 128;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+
+    if (selfieDataUrl) {
+      const img = new Image();
+      img.onload = () => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(img, 0, 0, size, size);
+        ctx.restore();
+        c._tex.needsUpdate = true;
+      };
+      img.src = selfieDataUrl;
+    } else {
+      // Placeholder: skin-coloured circle with simple face
+      ctx.fillStyle = '#f5c9a0';
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#444';
+      // Eyes
+      ctx.beginPath(); ctx.arc(44, 52, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(84, 52, 6, 0, Math.PI * 2); ctx.fill();
+      // Smile
+      ctx.strokeStyle = '#444'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(64, 68, 18, 0.1 * Math.PI, 0.9 * Math.PI); ctx.stroke();
+    }
+    return c;
+  }
+
+  // ── Build a 3D jockey group, seated on horse back ────────────────────────
+  // horseY: Y height of the horse's back in group-local space (~2.0)
+  function createJockey(horseColor) {
+    const jGroup = new THREE.Group();
+    const col = new THREE.Color(horseColor);
+
+    // Silk color: complementary hue to the horse color
+    const silkCol = col.clone().offsetHSL(0.5, 0.1, 0.15);
+    const silkMat = new THREE.MeshLambertMaterial({ color: silkCol });
+    // Accent stripe (white)
+    const stripeMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    // Dark riding breeches
+    const breechesMat = new THREE.MeshLambertMaterial({ color: 0x222233 });
+    // Boot leather
+    const bootMat = new THREE.MeshLambertMaterial({ color: 0x1a1008 });
+    // Helmet (same silk color with contrasting peak)
+    const helmetMat = new THREE.MeshLambertMaterial({ color: silkCol });
+
+    const Y = 2.05; // base Y of horse back in group space
+
+    // ── Torso (leaning forward ~25°) ──
+    const torsoG = new THREE.Group();
+    torsoG.position.set(0.0, Y + 0.28, 0);
+    torsoG.rotation.z = 0.42; // lean forward
+
+    const torso = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.17, 0.20, 0.48, 8),
+      silkMat
+    );
+    torso.castShadow = true;
+    torsoG.add(torso);
+
+    // White stripe across torso
+    const stripe = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.175, 0.205, 0.06, 8),
+      stripeMat
+    );
+    stripe.position.y = 0.08;
+    torsoG.add(stripe);
+
+    jGroup.add(torsoG);
+
+    // ── Helmet ──
+    const helmetG = new THREE.Group();
+    helmetG.position.set(0.24, Y + 0.78, 0);
+    helmetG.rotation.z = 0.42;
+
+    const helmet = new THREE.Mesh(
+      new THREE.SphereGeometry(0.185, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.65),
+      helmetMat
+    );
+    helmet.castShadow = true;
+    helmetG.add(helmet);
+
+    // Helmet peak (visor)
+    const peak = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.18, 0.04, 8),
+      new THREE.MeshLambertMaterial({ color: 0x111111 })
+    );
+    peak.position.set(0.16, -0.14, 0);
+    peak.rotation.z = 0.5;
+    helmetG.add(peak);
+
+    jGroup.add(helmetG);
+
+    // ── Face (canvas texture, updated with selfie) ──
+    const faceCanvas = makeFaceCanvas(null);
+    const faceTex = new THREE.CanvasTexture(faceCanvas);
+    faceCanvas._tex = faceTex;
+
+    const face = new THREE.Mesh(
+      new THREE.SphereGeometry(0.145, 10, 8),
+      new THREE.MeshLambertMaterial({ map: faceTex })
+    );
+    face.scale.set(1.1, 1.0, 0.75);
+    face.position.set(0.35, Y + 0.72, 0);
+    face.rotation.z = 0.3;
+    face.castShadow = true;
+    jGroup.add(face);
+    jGroup._jockeyFace = face;
+    jGroup._faceCanvas = faceCanvas;
+    jGroup._faceTex = faceTex;
+
+    // ── Arms reaching forward to hold reins ──
+    [-0.14, 0.14].forEach(zOff => {
+      const arm = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.045, 0.50, 6),
+        silkMat
+      );
+      arm.position.set(0.38, Y + 0.48, zOff);
+      arm.rotation.z = Math.PI * 0.38;
+      arm.castShadow = true;
+      jGroup.add(arm);
+
+      // Hand/glove (small sphere)
+      const hand = new THREE.Mesh(
+        new THREE.SphereGeometry(0.055, 6, 6),
+        new THREE.MeshLambertMaterial({ color: 0x222222 })
+      );
+      hand.position.set(0.60, Y + 0.30, zOff);
+      jGroup.add(hand);
+    });
+
+    // ── Legs / breeches (gripping horse sides) ──
+    [-0.22, 0.22].forEach(zOff => {
+      const thigh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.075, 0.065, 0.40, 6),
+        breechesMat
+      );
+      thigh.position.set(-0.05, Y + 0.08, zOff);
+      thigh.rotation.z = Math.PI * 0.08;
+      thigh.rotation.x = zOff < 0 ? 0.2 : -0.2;
+      thigh.castShadow = true;
+      jGroup.add(thigh);
+
+      // Boot
+      const boot = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.06, 0.35, 6),
+        bootMat
+      );
+      boot.position.set(-0.05, Y - 0.22, zOff);
+      boot.rotation.x = zOff < 0 ? 0.3 : -0.3;
+      jGroup.add(boot);
+    });
+
+    return jGroup;
+  }
+
+  // ── selfie map: horseIndex → selfie dataUrl ───────────────────────────────
+  let pendingSelfies = {};
+
+  function applySelfiesToHorses() {
+    horses3d.forEach((h3d, i) => {
+      const selfie = pendingSelfies[i];
+      if (selfie && h3d._jockeyGroup) {
+        applySelfieToJockey(h3d._jockeyGroup, selfie);
+      }
+    });
+  }
+
+  function applySelfieToJockey(jGroup, selfieDataUrl) {
+    if (!jGroup || !selfieDataUrl) return;
+    const faceCanvas = jGroup._faceCanvas;
+    const faceTex = jGroup._faceTex;
+    if (!faceCanvas || !faceTex) return;
+
+    const size = faceCanvas.width;
+    const ctx = faceCanvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, size, size);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+      ctx.clip();
+      // Mirror the selfie (front camera is mirrored)
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, -size, 0, size, size);
+      ctx.restore();
+      faceTex.needsUpdate = true;
+    };
+    img.src = selfieDataUrl;
+  }
+
   // ── Create horse from GLB or fallback geometry ─────────────────────────
   function createHorse(color, laneIndex, totalLanes) {
     const group = new THREE.Group();
@@ -521,19 +721,17 @@ const Race3D = (() => {
         legs.push(legG);
       });
 
-      // Jockey
-      const jCol = col.clone().offsetHSL(0.15, 0.2, 0.1);
-      const jBody = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6),
-        new THREE.MeshLambertMaterial({ color: jCol }));
-      jBody.scale.set(0.8, 1.2, 0.7);
-      jBody.position.set(-0.1, 2.35, 0);
-      group.add(jBody);
-      const jHead = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6),
-        new THREE.MeshLambertMaterial({ color: 0xf5c9a0 }));
-      jHead.position.set(0.0, 2.65, 0);
-      group.add(jHead);
-
       group._fallbackLegs = legs;
+    }
+
+    // ── 3D Jockey (added to both GLB and fallback horses) ──
+    const jockeyGroup = createJockey(color);
+    group.add(jockeyGroup);
+    group._jockeyGroup = jockeyGroup;
+
+    // Apply any pending selfie for this horse index
+    if (pendingSelfies[laneIndex]) {
+      applySelfieToJockey(jockeyGroup, pendingSelfies[laneIndex]);
     }
 
     // ── Saddle cloth number (floating above horse) ──
@@ -856,6 +1054,7 @@ const Race3D = (() => {
     frameCount = 0;
     lastHorsesData = [];
     lastPhase = null;
+    pendingSelfies = {};
   }
 
   function resize() {
@@ -867,9 +1066,17 @@ const Race3D = (() => {
     renderer.setSize(w, h);
   }
 
+  // ── Set selfie images on jockey faces ─────────────────────────────────
+  // selfieMap: { [horseIndex]: selfieDataUrl }
+  function setHorseSelfies(selfieMap) {
+    pendingSelfies = selfieMap || {};
+    applySelfiesToHorses();
+  }
+
   return {
     init,
     updateHorses,
+    setHorseSelfies,
     startRendering() { if (!animFrameId) render(); },
     stopRendering() { if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; } },
     dispose,

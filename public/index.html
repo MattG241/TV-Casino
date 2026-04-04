@@ -34,6 +34,34 @@
       </div>
     </div>
 
+    <!-- SELFIE SCREEN -->
+    <div class="screen" id="selfieScreen">
+      <div class="selfie-wrap">
+        <div class="selfie-title">🏇 JOCKEY SETUP</div>
+        <div class="selfie-subtitle">Your face goes on your jockey in the 3D race</div>
+
+        <div class="selfie-cam-area" id="selfieCamArea">
+          <video id="selfieVideo" autoplay playsinline muted></video>
+          <canvas id="selfieCanvas" style="display:none" width="240" height="240"></canvas>
+          <img id="selfieImg" alt="Your selfie" style="display:none">
+          <div class="selfie-cam-ring"></div>
+        </div>
+
+        <div class="selfie-btns">
+          <button class="btn btn-gold selfie-snap-btn" id="selfieSnapBtn" onclick="captureSelfie()">📸 TAKE PHOTO</button>
+          <button class="btn btn-outline selfie-retake-btn" id="selfieRetakeBtn" style="display:none" onclick="retakeSelfie()">↩ RETAKE</button>
+        </div>
+
+        <div class="selfie-horse-name-wrap">
+          <div class="selfie-horse-label">NAME YOUR HORSE</div>
+          <input class="selfie-horse-input" id="horseNameInput" type="text" placeholder="e.g. Thunder King" maxlength="20" autocomplete="off">
+        </div>
+
+        <button class="btn btn-gold btn-block selfie-go-btn" onclick="completeSelfie()">🏇 ENTER THE RACE</button>
+        <button class="btn btn-outline selfie-skip-btn" onclick="skipSelfie()">Skip photo →</button>
+      </div>
+    </div>
+
     <!-- LOBBY SCREEN (waiting for everyone) -->
     <div class="screen" id="lobbyScreen">
       <div class="room-header">
