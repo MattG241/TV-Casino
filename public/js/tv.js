@@ -17,42 +17,7 @@ let lastRoulettePhase = null;
 let floatingPositions = {};
 let floatAnimFrameId = null;
 
-// ── Fullscreen Management ────────────────────────────────────────────────
-
-function goFullscreen() {
-  const el = document.documentElement;
-  const rfs = el.requestFullscreen || el.webkitRequestFullscreen ||
-              el.mozRequestFullScreen || el.msRequestFullscreen;
-  if (rfs) rfs.call(el).catch(() => {});
-}
-
-function exitFullscreen() {
-  const efs = document.exitFullscreen || document.webkitExitFullscreen ||
-              document.mozCancelFullScreen || document.msExitFullscreen;
-  if (efs && document.fullscreenElement) efs.call(document).catch(() => {});
-}
-
-function toggleFullscreen() {
-  if (document.fullscreenElement || document.webkitFullscreenElement) {
-    exitFullscreen();
-  } else {
-    goFullscreen();
-  }
-}
-
-const fsPrompt = document.getElementById('fullscreenPrompt');
-if (fsPrompt) {
-  fsPrompt.addEventListener('click', () => {
-    goFullscreen();
-    fsPrompt.classList.add('hidden');
-    CasinoAudio.startMusic();
-  });
-}
-
-document.addEventListener('dblclick', (e) => {
-  if (e.target.closest('.tv-sound-toggle')) return;
-  toggleFullscreen();
-});
+// Fullscreen disabled — Smart TVs don't support the Fullscreen API
 
 const soundBtn = document.getElementById('soundToggle');
 if (soundBtn) {
@@ -90,9 +55,6 @@ function showJoinInfo() {
   }
 }
 
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'F11') { e.preventDefault(); toggleFullscreen(); }
-});
 
 init();
 
