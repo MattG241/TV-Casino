@@ -427,6 +427,202 @@ const Race3D = (() => {
     return tex;
   }
 
+  // ── Build a full 3D jockey figure in riding posture ────────────────────
+  function buildJockey(silkColor, selfieDataUrl) {
+    const jockey = new THREE.Group();
+    const silk = silkColor.clone();
+    const silkMat = new THREE.MeshLambertMaterial({ color: silk });
+    const silkDark = new THREE.MeshLambertMaterial({ color: silk.clone().multiplyScalar(0.6) });
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0xf5c9a0 });
+    const bootMat = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
+    const whiteMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee });
+
+    // ── Torso (leaning forward in racing crouch) ──
+    const torsoGroup = new THREE.Group();
+    torsoGroup.rotation.x = -0.45; // lean forward
+
+    // Upper body / chest
+    const jChest = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.18, 2, 2, 2), silkMat);
+    jChest.position.set(0, 0.14, 0);
+    jChest.castShadow = true;
+    torsoGroup.add(jChest);
+
+    // Lower torso / waist
+    const waistMesh = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.12, 0.17, 2, 2, 2), silkDark);
+    waistMesh.position.set(0, -0.02, 0);
+    torsoGroup.add(waistMesh);
+
+    jockey.add(torsoGroup);
+    jockey._torsoGroup = torsoGroup;
+
+    // ── Neck ──
+    const jNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.08, 8), skinMat);
+    jNeck.position.set(0, 0.32, 0.06);
+    torsoGroup.add(jNeck);
+
+    // ── Head ──
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 0.44, 0.08);
+
+    // Back of head (skull)
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.10, 12, 10), skinMat);
+    skull.scale.set(1, 1.05, 1);
+    headGroup.add(skull);
+
+    // Face - front-facing disc with selfie texture
+    if (selfieDataUrl) {
+      const selfieTex = loadSelfieTexture(selfieDataUrl);
+      const faceMat = new THREE.MeshBasicMaterial({ map: selfieTex });
+      const faceGeo = new THREE.CircleGeometry(0.09, 24);
+      const face = new THREE.Mesh(faceGeo, faceMat);
+      face.position.set(0, 0.0, 0.095);
+      headGroup.add(face);
+      jockey._faceDisc = face;
+    }
+
+    // Helmet / jockey cap
+    const helmet = new THREE.Mesh(
+      new THREE.SphereGeometry(0.105, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      silkMat
+    );
+    helmet.position.set(0, 0.02, 0);
+    headGroup.add(helmet);
+
+    // Helmet peak / visor
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.015, 0.08), silkDark);
+    visor.position.set(0, -0.01, 0.10);
+    visor.rotation.x = -0.2;
+    headGroup.add(visor);
+
+    // Goggles
+    const goggleMat = new THREE.MeshLambertMaterial({ color: 0x222222, transparent: true, opacity: 0.85 });
+    const goggleStrap = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 6, 16), goggleMat);
+    goggleStrap.position.set(0, 0.02, 0.04);
+    goggleStrap.rotation.x = Math.PI * 0.45;
+    headGroup.add(goggleStrap);
+
+    // Goggle lenses
+    [-0.04, 0.04].forEach(xOff => {
+      const lens = new THREE.Mesh(new THREE.CircleGeometry(0.025, 8),
+        new THREE.MeshBasicMaterial({ color: 0x88aaff, transparent: true, opacity: 0.6 }));
+      lens.position.set(xOff, 0.005, 0.09);
+      headGroup.add(lens);
+    });
+
+    // Chin strap
+    const chinStrap = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.12, 4), silkDark);
+    chinStrap.position.set(0.07, -0.06, 0.02);
+    chinStrap.rotation.z = 0.4;
+    headGroup.add(chinStrap);
+    const chinStrap2 = chinStrap.clone();
+    chinStrap2.position.x = -0.07;
+    chinStrap2.rotation.z = -0.4;
+    headGroup.add(chinStrap2);
+
+    torsoGroup.add(headGroup);
+    jockey._headGroup = headGroup;
+
+    // ── Shoulders ──
+    [-0.14, 0.14].forEach(xOff => {
+      const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), silkMat);
+      shoulder.position.set(xOff, 0.24, 0);
+      torsoGroup.add(shoulder);
+    });
+
+    // ── Arms (reaching forward for reins) ──
+    [-1, 1].forEach(side => {
+      const armGroup = new THREE.Group();
+      armGroup.position.set(side * 0.14, 0.22, 0);
+
+      // Upper arm
+      const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.22, 6), silkMat);
+      upperArm.position.set(0, -0.05, 0.08);
+      upperArm.rotation.x = -1.2;
+      upperArm.rotation.z = side * 0.15;
+      armGroup.add(upperArm);
+
+      // Elbow
+      const elbowMesh = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), silkMat);
+      elbowMesh.position.set(side * 0.02, -0.1, 0.18);
+      armGroup.add(elbowMesh);
+
+      // Forearm
+      const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.025, 0.20, 6), silkMat);
+      forearm.position.set(side * 0.03, -0.08, 0.26);
+      forearm.rotation.x = -0.5;
+      forearm.rotation.z = side * -0.2;
+      armGroup.add(forearm);
+
+      // Hand / glove
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), whiteMat);
+      hand.scale.set(0.8, 1.2, 0.6);
+      hand.position.set(side * 0.04, -0.06, 0.35);
+      armGroup.add(hand);
+
+      // Rein line from hand
+      const reinGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(side * 0.04, -0.06, 0.35),
+        new THREE.Vector3(side * 0.02, -0.16, 0.40),
+      ]);
+      armGroup.add(new THREE.Line(reinGeo, new THREE.LineBasicMaterial({ color: 0x8B4513 })));
+
+      torsoGroup.add(armGroup);
+    });
+
+    // ── Legs (bent in stirrups, riding crouch) ──
+    [-1, 1].forEach(side => {
+      const legGroup = new THREE.Group();
+      legGroup.position.set(side * 0.09, -0.06, 0);
+
+      // Thigh
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.24, 6), whiteMat);
+      thigh.position.set(side * 0.02, -0.08, -0.04);
+      thigh.rotation.x = 0.7;
+      thigh.rotation.z = side * -0.15;
+      legGroup.add(thigh);
+
+      // Knee
+      const kneeMesh = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), whiteMat);
+      kneeMesh.position.set(side * 0.03, -0.18, -0.12);
+      legGroup.add(kneeMesh);
+
+      // Shin
+      const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.22, 6), whiteMat);
+      shin.position.set(side * 0.03, -0.30, -0.08);
+      shin.rotation.x = -0.4;
+      legGroup.add(shin);
+
+      // Riding boot
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.12), bootMat);
+      boot.position.set(side * 0.03, -0.42, -0.05);
+      legGroup.add(boot);
+
+      // Boot heel
+      const bootHeel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.03), bootMat);
+      bootHeel.position.set(side * 0.03, -0.43, -0.10);
+      legGroup.add(bootHeel);
+
+      // Stirrup (metal ring)
+      const stirrup = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.005, 4, 8),
+        new THREE.MeshLambertMaterial({ color: 0x999999 }));
+      stirrup.position.set(side * 0.03, -0.44, -0.04);
+      stirrup.rotation.y = Math.PI / 2;
+      legGroup.add(stirrup);
+
+      jockey.add(legGroup);
+    });
+
+    // ── Whip (in right hand) ──
+    const whip = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.004, 0.35, 4),
+      new THREE.MeshLambertMaterial({ color: 0x8B4513 }));
+    whip.position.set(0.18, 0.12, 0.32);
+    whip.rotation.x = -0.3;
+    whip.rotation.z = 0.6;
+    torsoGroup.add(whip);
+
+    return jockey;
+  }
+
   // ── Create horse from GLB or fallback geometry ─────────────────────────
   function createHorse(color, laneIndex, totalLanes, selfieDataUrl, playerName) {
     const group = new THREE.Group();
@@ -467,44 +663,14 @@ const Race3D = (() => {
         action.paused = true; // Start paused, control speed per phase
       }
 
-      // ── Add jockey on top of GLB horse ──
-      const jockeyGroup = new THREE.Group();
-      jockeyGroup.scale.set(50, 50, 50); // Counteract the 0.02 horse scale
-      jockeyGroup.position.set(0, 90, 0); // Sit on top of horse (in horse-local units)
-      jockeyGroup.rotation.y = -Math.PI / 2; // Face forward
-
-      const jCol = col.clone().offsetHSL(0.15, 0.2, 0.1);
-      const jBody = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6),
-        new THREE.MeshLambertMaterial({ color: jCol }));
-      jBody.scale.set(0.8, 1.2, 0.7);
-      jBody.position.set(-0.1, 0.0, 0);
-      jockeyGroup.add(jBody);
-
-      // Jockey head — use selfie texture if available
-      let jHeadMat;
-      if (selfieDataUrl) {
-        const selfieTex = loadSelfieTexture(selfieDataUrl);
-        jHeadMat = new THREE.MeshBasicMaterial({ map: selfieTex });
-      } else {
-        jHeadMat = new THREE.MeshLambertMaterial({ color: 0xf5c9a0 });
-      }
-      const headSize = selfieDataUrl ? 0.22 : 0.12;
-      const jHead = new THREE.Mesh(new THREE.SphereGeometry(headSize, 12, 12), jHeadMat);
-      jHead.position.set(0.0, 0.3, 0);
-      jockeyGroup.add(jHead);
-      group._jockeyHead = jHead;
-
-      // Jockey arms
-      [-0.18, 0.18].forEach(zOff => {
-        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.35, 6),
-          new THREE.MeshLambertMaterial({ color: jCol }));
-        arm.position.set(0.1, 0.05, zOff);
-        arm.rotation.z = 0.8;
-        jockeyGroup.add(arm);
-      });
-
-      model.add(jockeyGroup);
-      group._jockeyGroup = jockeyGroup;
+      // ── Add full 3D jockey on top of GLB horse ──
+      const jockey = buildJockey(col, selfieDataUrl);
+      jockey.scale.set(50, 50, 50); // Counteract the 0.02 horse scale
+      jockey.position.set(0, 95, 0); // Sit on top of horse (in horse-local units)
+      jockey.rotation.y = -Math.PI / 2; // Face forward
+      model.add(jockey);
+      group._jockey = jockey;
+      group._jockeyHead = jockey._headGroup;
     } else {
       // Fallback: simple geometry horse
       const bodyMat = new THREE.MeshLambertMaterial({ color: col });
@@ -575,36 +741,12 @@ const Race3D = (() => {
         legs.push(legG);
       });
 
-      // Jockey body
-      const jCol = col.clone().offsetHSL(0.15, 0.2, 0.1);
-      const jBody = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6),
-        new THREE.MeshLambertMaterial({ color: jCol }));
-      jBody.scale.set(0.8, 1.2, 0.7);
-      jBody.position.set(-0.1, 2.35, 0);
-      group.add(jBody);
-
-      // Jockey head — use selfie texture if available
-      let jHeadMat;
-      if (selfieDataUrl) {
-        const selfieTex = loadSelfieTexture(selfieDataUrl);
-        jHeadMat = new THREE.MeshBasicMaterial({ map: selfieTex });
-      } else {
-        jHeadMat = new THREE.MeshLambertMaterial({ color: 0xf5c9a0 });
-      }
-      const headSize = selfieDataUrl ? 0.22 : 0.12;
-      const jHead = new THREE.Mesh(new THREE.SphereGeometry(headSize, 12, 12), jHeadMat);
-      jHead.position.set(0.0, 2.65, 0);
-      group.add(jHead);
-      group._jockeyHead = jHead;
-
-      // Jockey arms
-      [-0.18, 0.18].forEach(zOff => {
-        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.35, 6),
-          new THREE.MeshLambertMaterial({ color: jCol }));
-        arm.position.set(0.1, 2.4, zOff);
-        arm.rotation.z = 0.8;
-        group.add(arm);
-      });
+      // ── Full 3D jockey on fallback horse ──
+      const jockey = buildJockey(col, selfieDataUrl);
+      jockey.position.set(-0.1, 2.35, 0);
+      group.add(jockey);
+      group._jockey = jockey;
+      group._jockeyHead = jockey._headGroup;
 
       group._fallbackLegs = legs;
     }
