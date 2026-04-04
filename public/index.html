@@ -84,55 +84,6 @@
       </div>
     </div>
 
-    <!-- VOTE SCREEN -->
-    <div class="screen" id="voteScreen">
-      <div class="room-header">
-        <div>
-          <div style="font-size:11px;color:var(--text-dim)">ROOM</div>
-          <div class="room-code" id="voteRoomCode"></div>
-        </div>
-        <div class="chips-display">
-          <span class="chip-icon">$</span>
-          <span id="voteChips">1000</span>
-        </div>
-      </div>
-      <div class="vote-header">Vote for a game!</div>
-      <div class="vote-timer-bar"><div class="vote-timer-fill" id="voteTimerFill"></div></div>
-      <div class="vote-timer-text" id="voteTimerText"></div>
-      <div class="game-grid" id="voteGrid">
-        <div class="game-card vote-card" onclick="voteForGame('roulette')">
-          <div class="game-icon">🎰</div>
-          <div class="game-name">Roulette</div>
-          <div class="game-desc">Bet on numbers & colors</div>
-          <div class="vote-count" id="vote-roulette">0</div>
-        </div>
-        <div class="game-card vote-card" onclick="voteForGame('slots')">
-          <div class="game-icon">🍒</div>
-          <div class="game-name">Slots</div>
-          <div class="game-desc">Spin to win big</div>
-          <div class="vote-count" id="vote-slots">0</div>
-        </div>
-        <div class="game-card vote-card" onclick="voteForGame('blackjack')">
-          <div class="game-icon">🃏</div>
-          <div class="game-name">Blackjack</div>
-          <div class="game-desc">Beat the dealer to 21</div>
-          <div class="vote-count" id="vote-blackjack">0</div>
-        </div>
-        <div class="game-card vote-card" onclick="voteForGame('poker')">
-          <div class="game-icon">♠️</div>
-          <div class="game-name">Poker</div>
-          <div class="game-desc">Texas Hold'em</div>
-          <div class="vote-count" id="vote-poker">0</div>
-        </div>
-        <div class="game-card vote-card" onclick="voteForGame('horseracing')">
-          <div class="game-icon">🏇</div>
-          <div class="game-name">Horses</div>
-          <div class="game-desc">Pick a winner</div>
-          <div class="vote-count" id="vote-horseracing">0</div>
-        </div>
-      </div>
-    </div>
-
     <!-- GAME SCREEN -->
     <div class="screen" id="gameScreen">
       <div class="room-header">
@@ -148,24 +99,11 @@
       <div class="players-bar" id="gamePlayersBar"></div>
 
       <div id="gameArea">
-        <!-- ROULETTE -->
-        <div class="game-view" id="rouletteGame">
-          <div id="rouletteContent"></div>
-        </div>
-
-        <!-- SLOTS -->
-        <div class="game-view" id="slotsGame">
-          <div id="slotsContent"></div>
-        </div>
-
-        <!-- BLACKJACK -->
-        <div class="game-view" id="blackjackGame">
-          <div id="blackjackContent"></div>
-        </div>
-
-        <!-- POKER -->
-        <div class="game-view" id="pokerGame">
-          <div id="pokerContent"></div>
+        <!-- placeholder for removed games (kept so showGameUI doesn't crash) -->
+        <div class="game-view" id="rouletteGame"></div>
+        <div class="game-view" id="slotsGame"></div>
+        <div class="game-view" id="blackjackGame"></div>
+        <div class="game-view" id="pokerGame"></div>
         </div>
 
         <!-- HORSE RACING -->
