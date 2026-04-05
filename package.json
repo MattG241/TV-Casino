@@ -1,15 +1,11 @@
 {
-  "name": "tv-casino",
-  "version": "1.0.0",
-  "description": "Mobile casino game with Chromecast TV casting and multiplayer support",
+  "name": "race-day",
+  "version": "2.0.0",
+  "description": "Horse racing betting game — bet on phone, watch on TV",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js & cd poker-3d && npm run dev",
-    "dev:server": "node server.js",
-    "dev:3d": "cd poker-3d && npm run dev",
-    "build": "cd poker-3d && npm run build",
-    "build:3d": "cd poker-3d && npm run build"
+    "dev": "node server.js"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TV Casino - TV Display</title>
+  <title>RACE DAY - TV Display</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -13,8 +13,8 @@
   <!-- Fullscreen prompt overlay -->
   <div class="fullscreen-prompt" id="fullscreenPrompt">
     <div class="fullscreen-prompt-content">
-      <div class="fullscreen-icon">🖥️</div>
-      <h2>TV CASINO</h2>
+      <div class="fullscreen-icon">🏇</div>
+      <h2>RACE DAY</h2>
       <p>Tap anywhere to go fullscreen</p>
       <div class="fullscreen-hint">Double-click anytime to toggle fullscreen</div>
     </div>
@@ -22,7 +22,7 @@
 
   <div class="tv-container">
     <div class="tv-header">
-      <div class="tv-logo">TV CASINO</div>
+      <div class="tv-logo">RACE DAY</div>
       <div class="tv-header-right">
         <div class="tv-room-code" id="tvRoomCode">----</div>
         <button class="tv-sound-toggle" id="soundToggle" title="Toggle Sound">🔊</button>
@@ -44,71 +44,6 @@
             <div class="tv-waiting-text" id="tvWaitingText">Waiting for players...</div>
           </div>
         </div>
-      </div>
-
-      <!-- Voting Screen -->
-      <div class="tv-screen" id="tvVoting">
-        <div class="tv-voting">
-          <h2>Vote for a Game!</h2>
-          <div class="tv-vote-timer" id="tvVoteTimer"></div>
-          <div class="tv-vote-grid" id="tvVoteGrid">
-            <div class="tv-vote-card" data-game="roulette">
-              <div class="tv-vote-icon">🎰</div>
-              <div class="tv-vote-name">Roulette</div>
-              <div class="tv-vote-bar"><div class="tv-vote-fill" id="tvVoteFill-roulette"></div></div>
-              <div class="tv-vote-count" id="tvVoteCount-roulette">0</div>
-            </div>
-            <div class="tv-vote-card" data-game="slots">
-              <div class="tv-vote-icon">🍒</div>
-              <div class="tv-vote-name">Slots</div>
-              <div class="tv-vote-bar"><div class="tv-vote-fill" id="tvVoteFill-slots"></div></div>
-              <div class="tv-vote-count" id="tvVoteCount-slots">0</div>
-            </div>
-            <div class="tv-vote-card" data-game="blackjack">
-              <div class="tv-vote-icon">🃏</div>
-              <div class="tv-vote-name">Blackjack</div>
-              <div class="tv-vote-bar"><div class="tv-vote-fill" id="tvVoteFill-blackjack"></div></div>
-              <div class="tv-vote-count" id="tvVoteCount-blackjack">0</div>
-            </div>
-            <div class="tv-vote-card" data-game="poker">
-              <div class="tv-vote-icon">♠️</div>
-              <div class="tv-vote-name">Poker</div>
-              <div class="tv-vote-bar"><div class="tv-vote-fill" id="tvVoteFill-poker"></div></div>
-              <div class="tv-vote-count" id="tvVoteCount-poker">0</div>
-            </div>
-            <div class="tv-vote-card" data-game="horseracing">
-              <div class="tv-vote-icon">🏇</div>
-              <div class="tv-vote-name">Horses</div>
-              <div class="tv-vote-bar"><div class="tv-vote-fill" id="tvVoteFill-horseracing"></div></div>
-              <div class="tv-vote-count" id="tvVoteCount-horseracing">0</div>
-            </div>
-          </div>
-          <div class="tv-voters" id="tvVoters"></div>
-        </div>
-      </div>
-
-      <!-- Roulette TV -->
-      <div class="tv-screen" id="tvRoulette">
-        <div class="tv-players" id="tvPlayersRoulette"></div>
-        <div class="tv-roulette" id="tvRouletteContent"></div>
-      </div>
-
-      <!-- Slots TV -->
-      <div class="tv-screen" id="tvSlots">
-        <div class="tv-players" id="tvPlayersSlots"></div>
-        <div class="tv-slots" id="tvSlotsContent"></div>
-      </div>
-
-      <!-- Blackjack TV -->
-      <div class="tv-screen" id="tvBlackjack">
-        <div class="tv-players" id="tvPlayersBlackjack"></div>
-        <div class="tv-blackjack" id="tvBlackjackContent"></div>
-      </div>
-
-      <!-- Poker TV -->
-      <div class="tv-screen" id="tvPoker">
-        <div class="tv-players" id="tvPlayersPoker"></div>
-        <div class="tv-poker" id="tvPokerContent"></div>
       </div>
 
       <!-- Horse Racing TV -->

@@ -76,104 +76,6 @@ function playerList(room) {
   }));
 }
 
-// ── Deck Helpers ────────────────────────────────────────────────────────────
-
-const SUITS = ['hearts', 'diamonds', 'clubs', 'spades'];
-const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-
-function createDeck() {
-  const deck = [];
-  for (const suit of SUITS)
-    for (const rank of RANKS)
-      deck.push({ suit, rank });
-  return shuffle(deck);
-}
-
-function shuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-function cardValue(card) {
-  if (['J','Q','K'].includes(card.rank)) return 10;
-  if (card.rank === 'A') return 11;
-  return parseInt(card.rank);
-}
-
-function handValue(hand) {
-  let total = hand.reduce((s, c) => s + cardValue(c), 0);
-  let aces = hand.filter(c => c.rank === 'A').length;
-  while (total > 21 && aces > 0) { total -= 10; aces--; }
-  return total;
-}
-
-// ── Poker Helpers ───────────────────────────────────────────────────────────
-
-function evaluatePokerHand(cards) {
-  if (cards.length < 5) return { rank: 0, name: 'Incomplete', kickers: [] };
-  const allCombos = getCombinations(cards, 5);
-  let best = { rank: -1, name: 'High Card', kickers: [] };
-  for (const combo of allCombos) {
-    const result = evaluateFiveCards(combo);
-    if (result.rank > best.rank) {
-      best = result;
-    } else if (result.rank === best.rank) {
-      // Compare kickers for same rank
-      const rk = result.kickers || [];
-      const bk = best.kickers || [];
-      for (let i = 0; i < Math.max(rk.length, bk.length); i++) {
-        if ((rk[i] || 0) > (bk[i] || 0)) { best = result; break; }
-        if ((rk[i] || 0) < (bk[i] || 0)) break;
-      }
-    }
-  }
-  return best;
-}
-
-function getCombinations(arr, k) {
-  if (k === 0) return [[]];
-  if (arr.length === 0) return [];
-  const [first, ...rest] = arr;
-  const withFirst = getCombinations(rest, k - 1).map(c => [first, ...c]);
-  const withoutFirst = getCombinations(rest, k);
-  return [...withFirst, ...withoutFirst];
-}
-
-function evaluateFiveCards(cards) {
-  const rankOrder = '23456789TJQKA';
-  const values = cards.map(c => c.rank === '10' ? 'T' : c.rank)
-    .map(r => rankOrder.indexOf(r)).sort((a, b) => b - a);
-  const suits = cards.map(c => c.suit);
-
-  const isFlush = suits.every(s => s === suits[0]);
-  const isWheel = values[0] === 12 && values[1] === 3 && values[2] === 2 && values[3] === 1 && values[4] === 0;
-  const isStraight = values.every((v, i) => i === 0 || values[i-1] - v === 1) || isWheel;
-  const straightHigh = isWheel ? 3 : values[0]; // A-2-3-4-5 straight high is 5 (index 3)
-
-  const counts = {};
-  values.forEach(v => counts[v] = (counts[v] || 0) + 1);
-  const groups = Object.entries(counts)
-    .map(([v, c]) => [parseInt(v), c])
-    .sort((a, b) => b[1] - a[1] || b[0] - a[0]);
-
-  // Kickers: sorted by group count desc, then value desc
-  const kickers = groups.map(g => g[0]);
-
-  if (isFlush && isStraight && values[0] === 12 && values[1] === 11) return { rank: 9, name: 'Royal Flush', kickers: [12] };
-  if (isFlush && isStraight) return { rank: 8, name: 'Straight Flush', kickers: [straightHigh] };
-  if (groups[0][1] === 4) return { rank: 7, name: 'Four of a Kind', kickers };
-  if (groups[0][1] === 3 && groups[1][1] === 2) return { rank: 6, name: 'Full House', kickers };
-  if (isFlush) return { rank: 5, name: 'Flush', kickers: values };
-  if (isStraight) return { rank: 4, name: 'Straight', kickers: [straightHigh] };
-  if (groups[0][1] === 3) return { rank: 3, name: 'Three of a Kind', kickers };
-  if (groups[0][1] === 2 && groups[1][1] === 2) return { rank: 2, name: 'Two Pair', kickers };
-  if (groups[0][1] === 2) return { rank: 1, name: 'One Pair', kickers };
-  return { rank: 0, name: 'High Card', kickers: values };
-}
-
 // ── Horse Name Generator ────────────────────────────────────────────────────
 
 const HORSE_ADJECTIVES = [
@@ -209,7 +111,6 @@ function generateHorseName(usedNames) {
   usedNames.add(name);
   return name;
 }
-
 // ── Dynamic Odds System ─────────────────────────────────────────────────────
 
 function generateBaseOdds(count) {
@@ -265,953 +166,9 @@ function recalculateOdds(horses, bets) {
   }
 }
 
-// ── Game Engines ────────────────────────────────────────────────────────────
+// ── Game Engine ────────────────────────────────────────────────────────────
 
 const games = {
-  // ── ROULETTE ──
-  roulette: {
-    start(room) {
-      if (room.currentGame !== 'roulette') return;
-      room.gameState = {
-        phase: 'betting',
-        bets: {},
-        result: null,
-        timer: 20,
-        history: room.gameState?.history || [],
-      };
-      broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
-      startBettingTimer(room, 20);
-    },
-    placeBet(room, playerId, bet) {
-      if (!room.gameState || room.gameState.phase !== 'betting') return;
-      const player = room.players.find(p => p.id === playerId);
-      if (!player) return;
-      const amount = parseInt(bet.amount);
-      if (!amount || amount <= 0 || amount > player.chips) return;
-      bet.amount = amount;
-      if (!room.gameState.bets[playerId]) room.gameState.bets[playerId] = [];
-      if (room.gameState.bets[playerId].length >= 10) return;
-      room.gameState.bets[playerId].push(bet);
-      player.chips -= amount;
-      // Throttle broadcasts
-      clearTimeout(room._betBroadcastTimeout);
-      room._betBroadcastTimeout = setTimeout(() => {
-        if (room.currentGame !== 'roulette' || !room.gameState || room.gameState.phase !== 'betting') return;
-        broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
-        broadcastToRoom(room, 'players:update', playerList(room));
-      }, 200);
-    },
-    spin(room) {
-      if (!room.gameState || room.gameState.phase !== 'betting') return;
-      // Cancel any pending bet broadcast
-      clearTimeout(room._betBroadcastTimeout);
-      room.gameState.phase = 'spinning';
-      room.gameState.timer = null;
-      const number = Math.floor(Math.random() * 37);
-      const RED = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
-      const color = number === 0 ? 'green' : RED.includes(number) ? 'red' : 'black';
-      console.log(`[ROULETTE] Spinning... result will be ${number} ${color}`);
-      broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
-
-      const spinState = room.gameState;
-
-      setTimeout(() => {
-        if (room.gameState !== spinState || room.currentGame !== 'roulette') return;
-        room.gameState.phase = 'result';
-        room.gameState.result = { number, color };
-
-        for (const [pid, bets] of Object.entries(room.gameState.bets)) {
-          const player = room.players.find(p => p.id === pid);
-          if (!player) continue;
-          for (const bet of bets) {
-            let win = 0;
-            if (bet.type === 'number' && bet.value === number) win = bet.amount * 36;
-            else if (bet.type === 'color' && bet.value === color && color !== 'green') win = bet.amount * 2;
-            else if (bet.type === 'even' && number !== 0 && number % 2 === 0) win = bet.amount * 2;
-            else if (bet.type === 'odd' && number % 2 === 1) win = bet.amount * 2;
-            else if (bet.type === '1-18' && number >= 1 && number <= 18) win = bet.amount * 2;
-            else if (bet.type === '19-36' && number >= 19 && number <= 36) win = bet.amount * 2;
-            else if (bet.type === '1st12' && number >= 1 && number <= 12) win = bet.amount * 3;
-            else if (bet.type === '2nd12' && number >= 13 && number <= 24) win = bet.amount * 3;
-            else if (bet.type === '3rd12' && number >= 25 && number <= 36) win = bet.amount * 3;
-            player.chips += win;
-            bet.won = win > 0;
-            bet.winAmount = win;
-          }
-        }
-        room.gameState.history.unshift({ number, color });
-        if (room.gameState.history.length > 20) room.gameState.history.pop();
-        broadcastToRoom(room, 'game:state', { game: 'roulette', state: room.gameState });
-        broadcastToRoom(room, 'players:update', playerList(room));
-
-        setTimeout(() => {
-          if (rooms.has(room.code) && room.gameState === spinState && room.currentGame === 'roulette') {
-            games.roulette.start(room);
-          }
-        }, 5000);
-      }, 4000);
-    },
-  },
-
-  // ── SLOTS (Multiplayer Spin-Together) ──
-  slots: {
-    SYMBOLS: ['cherry', 'lemon', 'orange', 'plum', 'bell', 'bar', 'seven', 'diamond', 'wild'],
-    WEIGHTS:  [22, 18, 16, 13, 10, 7, 3, 2, 9],
-    PAYOUTS: { cherry: 5, lemon: 8, orange: 10, plum: 15, bell: 25, bar: 50, seven: 100, diamond: 250 },
-    // 5 paylines: middle row, top row, bottom row, diagonal \, diagonal /
-    PAYLINES: [
-      [[0,1],[1,1],[2,1]], // middle
-      [[0,0],[1,0],[2,0]], // top
-      [[0,2],[1,2],[2,2]], // bottom
-      [[0,0],[1,1],[2,2]], // diagonal \
-      [[0,2],[1,1],[2,0]], // diagonal /
-    ],
-
-    weightedRandom() {
-      const totalWeight = this.WEIGHTS.reduce((a, b) => a + b, 0);
-      let r = Math.random() * totalWeight;
-      for (let i = 0; i < this.SYMBOLS.length; i++) {
-        r -= this.WEIGHTS[i];
-        if (r <= 0) return this.SYMBOLS[i];
-      }
-      return this.SYMBOLS[0];
-    },
-
-    start(room) {
-      room.gameState = {
-        phase: 'betting',       // betting → spinning → results → betting...
-        bets: {},               // { playerId: amount }
-        results: {},            // { playerId: { reels, paylines, totalWin, betAmount } }
-        roundNumber: (room.gameState?.roundNumber || 0) + 1,
-        jackpot: room.gameState?.jackpot || 500,
-        timer: 15,
-        history: room.gameState?.history || [],     // last 10 round summaries
-        leaderboard: room.gameState?.leaderboard || {}, // { playerId: netWinnings }
-        bonusRound: false,
-        freeSpins: {},          // { playerId: count }
-      };
-      broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
-      // Start betting timer
-      this._startBettingTimer(room);
-    },
-
-    _startBettingTimer(room) {
-      if (room._slotsTimer) clearInterval(room._slotsTimer);
-      const self = this;
-      room._slotsTimer = setInterval(() => {
-        if (!room.gameState || room.currentGame !== 'slots') {
-          clearInterval(room._slotsTimer);
-          return;
-        }
-        room.gameState.timer--;
-        broadcastToRoom(room, 'game:timer', { timer: room.gameState.timer });
-        if (room.gameState.timer <= 0) {
-          clearInterval(room._slotsTimer);
-          self.spinAll(room);
-        }
-      }, 1000);
-    },
-
-    placeBet(room, playerId, amount) {
-      if (!room.gameState || room.gameState.phase !== 'betting') return;
-      const player = room.players.find(p => p.id === playerId);
-      if (!player) return;
-      amount = parseInt(amount);
-      if (!amount || amount <= 0 || amount > player.chips) return;
-
-      // Refund previous bet if changing
-      if (room.gameState.bets[playerId]) {
-        player.chips += room.gameState.bets[playerId];
-      }
-      player.chips -= amount;
-      room.gameState.bets[playerId] = amount;
-      broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
-      broadcastToRoom(room, 'players:update', playerList(room));
-
-      // If all players have bet, start spinning immediately
-      const playersWithChips = room.players.filter(p => p.chips > 0 || room.gameState.bets[p.id]);
-      if (Object.keys(room.gameState.bets).length >= playersWithChips.length && playersWithChips.length > 0) {
-        clearInterval(room._slotsTimer);
-        // Small delay so last player sees their bet registered
-        setTimeout(() => this.spinAll(room), 1000);
-      }
-    },
-
-    generateReels() {
-      return [
-        [this.weightedRandom(), this.weightedRandom(), this.weightedRandom()],
-        [this.weightedRandom(), this.weightedRandom(), this.weightedRandom()],
-        [this.weightedRandom(), this.weightedRandom(), this.weightedRandom()],
-      ];
-    },
-
-    evaluateReels(reels, betAmount) {
-      const results = { paylines: [], totalWin: 0, totalMultiplier: 0, jackpotWin: false };
-
-      for (let lineIdx = 0; lineIdx < this.PAYLINES.length; lineIdx++) {
-        const line = this.PAYLINES[lineIdx];
-        const symbols = line.map(([r, s]) => reels[r][s]);
-
-        // Wild substitution: wild matches any symbol
-        const nonWild = symbols.filter(s => s !== 'wild');
-        let effectiveSymbols = symbols;
-        if (nonWild.length > 0 && nonWild.length < 3) {
-          const mainSym = nonWild[0];
-          effectiveSymbols = symbols.map(s => s === 'wild' ? mainSym : s);
-        } else if (nonWild.length === 0) {
-          effectiveSymbols = ['diamond', 'diamond', 'diamond']; // 3 wilds = best payout
-        }
-
-        let multiplier = 0;
-        if (effectiveSymbols[0] === effectiveSymbols[1] && effectiveSymbols[1] === effectiveSymbols[2]) {
-          const sym = effectiveSymbols[0];
-          multiplier = this.PAYOUTS[sym] || 5;
-          // Wild multiplier bonus: each wild symbol doubles the payout
-          const wildCount = symbols.filter(s => s === 'wild').length;
-          if (wildCount > 0 && wildCount < 3) multiplier *= (1 + wildCount);
-        } else if (effectiveSymbols[0] === effectiveSymbols[1] || effectiveSymbols[1] === effectiveSymbols[2]) {
-          multiplier = 2;
-        }
-
-        if (multiplier > 0) {
-          const lineWin = betAmount * multiplier;
-          results.paylines.push({ lineIdx, symbols, multiplier, win: lineWin });
-          results.totalWin += lineWin;
-          results.totalMultiplier += multiplier;
-        }
-      }
-
-      // Jackpot: 3 diamonds on middle line
-      const midLine = this.PAYLINES[0].map(([r, s]) => reels[r][s]);
-      if (midLine.every(s => s === 'diamond')) {
-        results.jackpotWin = true;
-      }
-
-      return results;
-    },
-
-    spinAll(room) {
-      if (!room.gameState || room.gameState.phase !== 'betting') return;
-      room.gameState.phase = 'spinning';
-      room.gameState.timer = null;
-      broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
-
-      // After spin animation delay, reveal results
-      setTimeout(() => {
-        if (!room.gameState || room.currentGame !== 'slots') return;
-        room.gameState.phase = 'results';
-        const results = {};
-        let jackpotWinner = null;
-
-        // Contribute to jackpot from all bets
-        const totalBets = Object.values(room.gameState.bets).reduce((a, b) => a + b, 0);
-        room.gameState.jackpot += Math.floor(totalBets * 0.05); // 5% of bets go to jackpot
-
-        for (const [pid, betAmount] of Object.entries(room.gameState.bets)) {
-          const player = room.players.find(p => p.id === pid);
-          if (!player) continue;
-
-          const reels = this.generateReels();
-          const evalResult = this.evaluateReels(reels, betAmount);
-
-          // Award winnings
-          player.chips += evalResult.totalWin;
-
-          // Jackpot check
-          if (evalResult.jackpotWin) {
-            player.chips += room.gameState.jackpot;
-            evalResult.jackpotAmount = room.gameState.jackpot;
-            jackpotWinner = pid;
-          }
-
-          // Track leaderboard (net winnings)
-          if (!room.gameState.leaderboard[pid]) room.gameState.leaderboard[pid] = 0;
-          room.gameState.leaderboard[pid] += evalResult.totalWin - betAmount;
-
-          // Free spins: ~5% chance to win 3 free spins
-          if (Math.random() < 0.05) {
-            room.gameState.freeSpins[pid] = (room.gameState.freeSpins[pid] || 0) + 3;
-            evalResult.freeSpinsWon = 3;
-          }
-
-          results[pid] = {
-            reels,
-            paylines: evalResult.paylines,
-            totalWin: evalResult.totalWin,
-            totalMultiplier: evalResult.totalMultiplier,
-            betAmount,
-            jackpotWin: evalResult.jackpotWin,
-            jackpotAmount: evalResult.jackpotAmount || 0,
-            freeSpinsWon: evalResult.freeSpinsWon || 0,
-          };
-        }
-
-        // Reset jackpot if won
-        if (jackpotWinner) room.gameState.jackpot = 500;
-
-        // Round history
-        const roundSummary = {
-          round: room.gameState.roundNumber,
-          players: Object.entries(results).map(([pid, r]) => ({
-            id: pid,
-            name: room.players.find(p => p.id === pid)?.name || '?',
-            bet: r.betAmount,
-            win: r.totalWin,
-            net: r.totalWin - r.betAmount,
-          })),
-          jackpotWinner,
-        };
-        room.gameState.history.unshift(roundSummary);
-        if (room.gameState.history.length > 10) room.gameState.history.pop();
-
-        // Bonus round: ~8% chance after round 3+
-        if (room.gameState.roundNumber >= 3 && Math.random() < 0.08) {
-          room.gameState.bonusRound = true;
-        }
-
-        room.gameState.results = results;
-        broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
-        broadcastToRoom(room, 'players:update', playerList(room));
-
-        // Auto-advance to next round
-        setTimeout(() => {
-          if (rooms.has(room.code) && room.currentGame === 'slots') {
-            this.start(room);
-          }
-        }, 6000);
-      }, 3000); // 3 second spin animation
-    },
-
-    // Free spin for a player (uses existing bet amount)
-    freeSpin(room, playerId) {
-      if (!room.gameState) return;
-      const freeCount = room.gameState.freeSpins?.[playerId] || 0;
-      if (freeCount <= 0) return;
-
-      room.gameState.freeSpins[playerId] = freeCount - 1;
-      const lastBet = room.gameState.results?.[playerId]?.betAmount || 10;
-      const reels = this.generateReels();
-      const evalResult = this.evaluateReels(reels, lastBet);
-
-      const player = room.players.find(p => p.id === playerId);
-      if (player) player.chips += evalResult.totalWin;
-
-      // Send as a personal result update
-      room.gameState.results[playerId] = {
-        reels,
-        paylines: evalResult.paylines,
-        totalWin: evalResult.totalWin,
-        totalMultiplier: evalResult.totalMultiplier,
-        betAmount: 0, // free spin
-        jackpotWin: false,
-        jackpotAmount: 0,
-        freeSpinsWon: 0,
-        isFreeSpin: true,
-      };
-      broadcastToRoom(room, 'game:state', { game: 'slots', state: room.gameState });
-      broadcastToRoom(room, 'players:update', playerList(room));
-    },
-  },
-
-  // ── BLACKJACK ──
-  blackjack: {
-    start(room) {
-      if (room.currentGame !== 'blackjack') return;
-      room.gameState = {
-        phase: 'betting',
-        deck: createDeck(),
-        hands: {},
-        dealerHand: [],
-        bets: {},
-        results: {},
-        turnOrder: [],
-        currentTurn: -1,
-      };
-      broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(room.gameState) });
-    },
-    placeBet(room, playerId, amount) {
-      if (!room.gameState || room.gameState.phase !== 'betting') return;
-      const player = room.players.find(p => p.id === playerId);
-      amount = parseInt(amount);
-      if (!player || !amount || amount <= 0 || amount > player.chips) return;
-      if (room.gameState.bets[playerId]) return; // already bet
-      player.chips -= amount;
-      room.gameState.bets[playerId] = amount;
-      broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(room.gameState) });
-      broadcastToRoom(room, 'players:update', playerList(room));
-
-      // Auto-deal if all players with chips have bet
-      const playersWithChips = room.players.filter(p => p.chips > 0 || room.gameState.bets[p.id]);
-      if (Object.keys(room.gameState.bets).length >= playersWithChips.length) {
-        this.deal(room);
-      }
-    },
-    deal(room) {
-      const gs = room.gameState;
-      gs.phase = 'playing';
-      gs.turnOrder = Object.keys(gs.bets);
-
-      for (const pid of gs.turnOrder) {
-        gs.hands[pid] = [gs.deck.pop(), gs.deck.pop()];
-      }
-      gs.dealerHand = [gs.deck.pop(), gs.deck.pop()];
-      gs.currentTurn = 0;
-
-      // Check for natural blackjacks
-      for (const pid of gs.turnOrder) {
-        if (handValue(gs.hands[pid]) === 21) {
-          gs.results[pid] = 'blackjack';
-        }
-      }
-      this.advanceTurn(room);
-    },
-    advanceTurn(room) {
-      const gs = room.gameState;
-      while (gs.currentTurn < gs.turnOrder.length) {
-        const pid = gs.turnOrder[gs.currentTurn];
-        if (!gs.results[pid]) break;
-        gs.currentTurn++;
-      }
-      if (gs.currentTurn >= gs.turnOrder.length) {
-        this.dealerPlay(room);
-        return;
-      }
-      broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(gs) });
-    },
-    hit(room, playerId) {
-      const gs = room.gameState;
-      if (!gs || gs.phase !== 'playing' || gs.turnOrder[gs.currentTurn] !== playerId) return;
-      if (gs.deck.length === 0) gs.deck = createDeck();
-      gs.hands[playerId].push(gs.deck.pop());
-      if (handValue(gs.hands[playerId]) > 21) {
-        gs.results[playerId] = 'bust';
-        gs.currentTurn++;
-        this.advanceTurn(room);
-      } else if (handValue(gs.hands[playerId]) === 21) {
-        // Stand automatically on 21
-        gs.currentTurn++;
-        this.advanceTurn(room);
-      } else {
-        broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(gs) });
-      }
-    },
-    stand(room, playerId) {
-      const gs = room.gameState;
-      if (!gs || gs.phase !== 'playing' || gs.turnOrder[gs.currentTurn] !== playerId) return;
-      gs.currentTurn++;
-      this.advanceTurn(room);
-    },
-    doubleDown(room, playerId) {
-      const gs = room.gameState;
-      if (!gs || gs.phase !== 'playing' || gs.turnOrder[gs.currentTurn] !== playerId) return;
-      const player = room.players.find(p => p.id === playerId);
-      if (!player || player.chips < gs.bets[playerId]) return;
-      player.chips -= gs.bets[playerId];
-      gs.bets[playerId] *= 2;
-      if (gs.deck.length === 0) gs.deck = createDeck();
-      gs.hands[playerId].push(gs.deck.pop());
-      if (handValue(gs.hands[playerId]) > 21) {
-        gs.results[playerId] = 'bust';
-      }
-      gs.currentTurn++;
-      this.advanceTurn(room);
-      broadcastToRoom(room, 'players:update', playerList(room));
-    },
-    dealerPlay(room) {
-      const gs = room.gameState;
-      gs.phase = 'dealer';
-      broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(gs, true) });
-
-      const dealerDraw = () => {
-        if (handValue(gs.dealerHand) < 17) {
-          if (gs.deck.length === 0) gs.deck = createDeck();
-          gs.dealerHand.push(gs.deck.pop());
-          broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(gs, true) });
-          setTimeout(dealerDraw, 1000);
-        } else {
-          games.blackjack.resolve(room);
-        }
-      };
-      setTimeout(dealerDraw, 1000);
-    },
-    resolve(room) {
-      const gs = room.gameState;
-      gs.phase = 'result';
-      const dealerVal = handValue(gs.dealerHand);
-      const dealerBust = dealerVal > 21;
-
-      for (const pid of gs.turnOrder) {
-        const player = room.players.find(p => p.id === pid);
-        if (!player) continue;
-        const pVal = handValue(gs.hands[pid]);
-
-        if (gs.results[pid] === 'bust') {
-          // Already lost
-        } else if (gs.results[pid] === 'blackjack') {
-          player.chips += Math.floor(gs.bets[pid] * 2.5);
-          gs.results[pid] = 'blackjack_win';
-        } else if (dealerBust || pVal > dealerVal) {
-          player.chips += gs.bets[pid] * 2;
-          gs.results[pid] = 'win';
-        } else if (pVal === dealerVal) {
-          player.chips += gs.bets[pid];
-          gs.results[pid] = 'push';
-        } else {
-          gs.results[pid] = 'lose';
-        }
-      }
-      broadcastToRoom(room, 'game:state', { game: 'blackjack', state: sanitizeBJ(gs, true) });
-      broadcastToRoom(room, 'players:update', playerList(room));
-
-      setTimeout(() => {
-        if (rooms.has(room.code) && room.currentGame === 'blackjack') games.blackjack.start(room);
-      }, 5000);
-    },
-  },
-
-  // ── POKER (Texas Hold'em) ──
-  poker: {
-    // ── AI PLAYER NAMES & PERSONALITIES ──
-    AI_NAMES: ['Ace McGraw', 'Lucky Lou', 'Poker Pete', 'Card Shark', 'Bluff King', 'The Dealer', 'Wild Card', 'High Roller'],
-    AI_AVATARS: [6, 7, 8, 9, 10, 11],
-
-    // Add AI player to room if only 1 human player
-    ensureAIPlayer(room) {
-      const humanPlayers = room.players.filter(p => !p.isAI && p.chips > 0);
-      const aiPlayers = room.players.filter(p => p.isAI);
-      if (humanPlayers.length === 1 && aiPlayers.length === 0) {
-        const nameIdx = Math.floor(Math.random() * this.AI_NAMES.length);
-        const aiPlayer = {
-          id: 'ai-' + uuidv4().slice(0, 8),
-          name: this.AI_NAMES[nameIdx],
-          chips: 1000,
-          avatar: this.AI_AVATARS[nameIdx % this.AI_AVATARS.length],
-          isAI: true,
-          socket: null,
-          // AI personality: aggression 0-1, bluffFreq 0-1, tightness 0-1
-          aiPersonality: {
-            aggression: 0.3 + Math.random() * 0.5,
-            bluffFreq: 0.1 + Math.random() * 0.2,
-            tightness: 0.3 + Math.random() * 0.4,
-          },
-        };
-        room.players.push(aiPlayer);
-        broadcastToRoom(room, 'players:update', playerList(room));
-        console.log(`[POKER] AI player "${aiPlayer.name}" joined room ${room.code}`);
-      }
-    },
-
-    // Remove AI players when multiple humans are present
-    removeAIPlayers(room) {
-      const humanPlayers = room.players.filter(p => !p.isAI);
-      if (humanPlayers.length >= 2) {
-        room.players = room.players.filter(p => !p.isAI);
-        broadcastToRoom(room, 'players:update', playerList(room));
-      }
-    },
-
-    // Evaluate AI hand strength (0-1 scale)
-    evaluateAIHandStrength(holeCards, communityCards) {
-      if (communityCards.length === 0) {
-        // Preflop: evaluate hole cards only
-        return this.preflopStrength(holeCards);
-      }
-      // Postflop: evaluate best hand from available cards
-      const allCards = [...holeCards, ...communityCards];
-      const result = evaluatePokerHand(allCards);
-      // Normalize rank 0-9 to 0-1, with bonus for higher sub-ranks
-      return Math.min(1, (result.rank / 9) * 0.8 + 0.2);
-    },
-
-    preflopStrength(cards) {
-      const rankOrder = '23456789TJQKA';
-      const r1 = rankOrder.indexOf(cards[0].rank === '10' ? 'T' : cards[0].rank);
-      const r2 = rankOrder.indexOf(cards[1].rank === '10' ? 'T' : cards[1].rank);
-      const high = Math.max(r1, r2);
-      const low = Math.min(r1, r2);
-      const isPair = r1 === r2;
-      const isSuited = cards[0].suit === cards[1].suit;
-      const gap = high - low;
-
-      let strength = 0;
-      if (isPair) {
-        strength = 0.5 + (high / 12) * 0.5; // Pairs: 0.5-1.0
-      } else {
-        strength = (high + low) / 24; // Base from card ranks
-        if (isSuited) strength += 0.06;
-        if (gap <= 2) strength += 0.04; // Connected cards
-        if (high >= 10) strength += 0.08; // Broadway cards
-      }
-      return Math.min(1, Math.max(0, strength));
-    },
-
-    // AI decision-making
-    getAIAction(room, aiPlayer) {
-      const gs = room.gameState;
-      const hand = gs.hands[aiPlayer.id];
-      const personality = aiPlayer.aiPersonality;
-      const handStrength = this.evaluateAIHandStrength(hand, gs.community);
-      const currentPlayerBet = gs.roundBets[aiPlayer.id] || 0;
-      const toCall = gs.currentBet - currentPlayerBet;
-      const potOdds = toCall > 0 ? toCall / (gs.pot + toCall) : 0;
-
-      // Add some randomness to make AI less predictable
-      const noise = (Math.random() - 0.5) * 0.15;
-      const effectiveStrength = Math.min(1, Math.max(0, handStrength + noise));
-
-      // Decision logic
-      if (toCall === 0) {
-        // No bet to call - check or raise
-        if (effectiveStrength > 0.7 + (1 - personality.aggression) * 0.2) {
-          // Strong hand - raise
-          const raiseSize = Math.floor(gs.pot * (0.5 + personality.aggression * 0.5));
-          const raiseTotal = gs.currentBet + Math.max(gs.bigBlind, raiseSize);
-          return { action: 'raise', amount: Math.min(raiseTotal, aiPlayer.chips + currentPlayerBet) };
-        }
-        if (effectiveStrength > 0.4 && Math.random() < personality.bluffFreq) {
-          // Medium hand with bluff attempt
-          const raiseTotal = gs.currentBet + gs.bigBlind * 2;
-          return { action: 'raise', amount: Math.min(raiseTotal, aiPlayer.chips + currentPlayerBet) };
-        }
-        return { action: 'check' };
-      }
-
-      // There's a bet to call
-      if (effectiveStrength > 0.8) {
-        // Very strong hand - raise
-        if (Math.random() < personality.aggression) {
-          if (effectiveStrength > 0.9 && aiPlayer.chips <= gs.pot * 1.5) {
-            return { action: 'allin' };
-          }
-          const raiseTotal = gs.currentBet + Math.floor(gs.pot * (0.5 + personality.aggression));
-          return { action: 'raise', amount: Math.min(raiseTotal, aiPlayer.chips + currentPlayerBet) };
-        }
-        return { action: 'call' };
-      }
-
-      if (effectiveStrength > 0.5) {
-        // Decent hand - call if pot odds are right
-        if (potOdds < effectiveStrength * 0.8) {
-          return { action: 'call' };
-        }
-        // Occasionally bluff-raise
-        if (Math.random() < personality.bluffFreq * 0.5) {
-          const raiseTotal = gs.currentBet + gs.bigBlind * 2;
-          return { action: 'raise', amount: Math.min(raiseTotal, aiPlayer.chips + currentPlayerBet) };
-        }
-        return { action: 'call' };
-      }
-
-      if (effectiveStrength > 0.3) {
-        // Marginal hand - call small bets, fold big ones
-        if (toCall <= gs.bigBlind * 2) return { action: 'call' };
-        if (Math.random() < personality.bluffFreq) return { action: 'call' };
-        return { action: 'fold' };
-      }
-
-      // Weak hand - mostly fold, occasional bluff
-      if (Math.random() < personality.bluffFreq * 0.3) {
-        const raiseTotal = gs.currentBet + gs.bigBlind * 3;
-        return { action: 'raise', amount: Math.min(raiseTotal, aiPlayer.chips + currentPlayerBet) };
-      }
-      if (toCall <= gs.bigBlind && Math.random() < 0.3) return { action: 'call' };
-      return { action: 'fold' };
-    },
-
-    // Schedule AI action with a natural delay
-    scheduleAIAction(room) {
-      const gs = room.gameState;
-      if (!gs || gs.phase === 'result' || gs.phase === 'showdown') return;
-      const currentPlayerId = gs.turnOrder[gs.currentTurn];
-      const aiPlayer = room.players.find(p => p.id === currentPlayerId && p.isAI);
-      if (!aiPlayer) return;
-
-      // Clear any existing AI timer
-      if (room._aiActionTimer) clearTimeout(room._aiActionTimer);
-
-      // Delay 1-3 seconds to feel natural
-      const delay = 1000 + Math.random() * 2000;
-      room._aiActionTimer = setTimeout(() => {
-        // Verify still AI's turn
-        if (!room.gameState || room.gameState.phase === 'result' || room.gameState.phase === 'showdown') return;
-        if (room.gameState.turnOrder[room.gameState.currentTurn] !== aiPlayer.id) return;
-
-        const decision = this.getAIAction(room, aiPlayer);
-        console.log(`[POKER AI] ${aiPlayer.name}: ${decision.action}${decision.amount ? ' $' + decision.amount : ''}`);
-        this.action(room, aiPlayer.id, decision.action, decision.amount);
-      }, delay);
-    },
-
-    start(room) {
-      if (room.currentGame !== 'poker') return;
-
-      // Add AI if only 1 human player, remove if 2+
-      this.ensureAIPlayer(room);
-      this.removeAIPlayers(room);
-
-      const activePlayers = room.players.filter(p => p.chips > 0).map(p => p.id);
-      if (activePlayers.length < 2) {
-        broadcastToRoom(room, 'game:error', { message: 'Need at least 2 players for poker' });
-        return;
-      }
-      const deck = createDeck();
-      const hands = {};
-      activePlayers.forEach(pid => {
-        hands[pid] = [deck.pop(), deck.pop()];
-      });
-
-      const prevDealerIdx = room.gameState?.dealerIdx;
-      room.gameState = {
-        phase: 'preflop',
-        deck,
-        hands,
-        community: [],
-        pot: 0,
-        bets: {},
-        currentBet: 20,
-        activePlayers: [...activePlayers],
-        foldedPlayers: [],
-        turnOrder: [...activePlayers],
-        currentTurn: 0,
-        roundBets: {},
-        smallBlind: 10,
-        bigBlind: 20,
-        dealerIdx: prevDealerIdx != null ? (prevDealerIdx + 1) % activePlayers.length : 0,
-        lastRaiser: null,
-        hasActed: {},
-      };
-
-      // Post blinds
-      const gs = room.gameState;
-
-      // Heads-up rule: dealer posts SB and acts first preflop, BB acts second
-      const isHeadsUp = gs.turnOrder.length === 2;
-      const sbIdx = isHeadsUp ? gs.dealerIdx : (gs.dealerIdx + 1) % gs.turnOrder.length;
-      const bbIdx = isHeadsUp ? (gs.dealerIdx + 1) % gs.turnOrder.length : (gs.dealerIdx + 2) % gs.turnOrder.length;
-
-      const sbPlayer = room.players.find(p => p.id === gs.turnOrder[sbIdx]);
-      const bbPlayer = room.players.find(p => p.id === gs.turnOrder[bbIdx]);
-
-      if (sbPlayer) {
-        const sbAmount = Math.min(gs.smallBlind, sbPlayer.chips);
-        sbPlayer.chips -= sbAmount;
-        gs.pot += sbAmount;
-        gs.roundBets[gs.turnOrder[sbIdx]] = sbAmount;
-      }
-      if (bbPlayer) {
-        const bbAmount = Math.min(gs.bigBlind, bbPlayer.chips);
-        bbPlayer.chips -= bbAmount;
-        gs.pot += bbAmount;
-        gs.roundBets[gs.turnOrder[bbIdx]] = bbAmount;
-        gs.currentBet = bbAmount;
-      }
-
-      // Preflop: action starts left of BB (or SB in heads-up since dealer=SB acts first)
-      if (isHeadsUp) {
-        gs.currentTurn = sbIdx; // Dealer/SB acts first preflop in heads-up
-      } else {
-        gs.currentTurn = (bbIdx + 1) % gs.turnOrder.length;
-      }
-
-      broadcastPlayerHands(room);
-      broadcastToRoom(room, 'players:update', playerList(room));
-
-      // Trigger AI if it's AI's turn
-      this.scheduleAIAction(room);
-    },
-
-    action(room, playerId, action, amount) {
-      const gs = room.gameState;
-      if (!gs || gs.phase === 'result' || gs.phase === 'showdown') return;
-      if (gs.turnOrder[gs.currentTurn] !== playerId) return;
-      const player = room.players.find(p => p.id === playerId);
-      if (!player) return;
-
-      const currentPlayerBet = gs.roundBets[playerId] || 0;
-
-      if (action === 'fold') {
-        gs.foldedPlayers.push(playerId);
-        gs.activePlayers = gs.activePlayers.filter(id => id !== playerId);
-        if (gs.activePlayers.length === 1) {
-          this.endHand(room, gs.activePlayers[0]);
-          return;
-        }
-      } else if (action === 'call') {
-        const callAmount = Math.min(gs.currentBet - currentPlayerBet, player.chips);
-        player.chips -= callAmount;
-        gs.pot += callAmount;
-        gs.roundBets[playerId] = (gs.roundBets[playerId] || 0) + callAmount;
-      } else if (action === 'raise') {
-        const raiseTotal = Math.min(amount, player.chips + currentPlayerBet);
-        const raiseAmount = raiseTotal - currentPlayerBet;
-        player.chips -= raiseAmount;
-        gs.pot += raiseAmount;
-        gs.roundBets[playerId] = raiseTotal;
-        gs.currentBet = raiseTotal;
-        gs.lastRaiser = playerId;
-      } else if (action === 'check') {
-        if (currentPlayerBet < gs.currentBet) return;
-      } else if (action === 'allin') {
-        const allInAmount = player.chips;
-        player.chips = 0;
-        gs.pot += allInAmount;
-        gs.roundBets[playerId] = (gs.roundBets[playerId] || 0) + allInAmount;
-        if (gs.roundBets[playerId] > gs.currentBet) {
-          gs.currentBet = gs.roundBets[playerId];
-          gs.lastRaiser = playerId;
-        }
-      }
-
-      // Mark player as having acted this round
-      gs.hasActed[playerId] = true;
-
-      // Advance turn
-      gs.currentTurn = (gs.currentTurn + 1) % gs.turnOrder.length;
-      // Skip folded/all-in players
-      let loops = 0;
-      while (loops < gs.turnOrder.length) {
-        const tid = gs.turnOrder[gs.currentTurn];
-        if (gs.foldedPlayers.includes(tid) || (room.players.find(p => p.id === tid)?.chips === 0)) {
-          gs.currentTurn = (gs.currentTurn + 1) % gs.turnOrder.length;
-          loops++;
-        } else break;
-      }
-
-      // Check if betting round is complete
-      const activeBettors = gs.activePlayers.filter(pid => {
-        const p = room.players.find(p2 => p2.id === pid);
-        return p && p.chips > 0;
-      });
-      const allMatched = activeBettors.every(pid => (gs.roundBets[pid] || 0) >= gs.currentBet);
-      const allActed = activeBettors.every(pid => gs.hasActed[pid]);
-
-      if ((allMatched && allActed) || activeBettors.length === 0) {
-        this.nextPhase(room);
-      } else {
-        broadcastPlayerHands(room);
-        broadcastToRoom(room, 'players:update', playerList(room));
-        // Trigger AI if it's AI's turn
-        this.scheduleAIAction(room);
-      }
-    },
-
-    nextPhase(room) {
-      const gs = room.gameState;
-      gs.roundBets = {};
-      gs.currentBet = 0;
-      gs.lastRaiser = null;
-      gs.hasActed = {};
-
-      // Check if all active players are all-in (no more betting possible)
-      const activeBettors = gs.activePlayers.filter(pid => {
-        const p = room.players.find(p2 => p2.id === pid);
-        return p && p.chips > 0;
-      });
-      const skipToShowdown = activeBettors.length <= 1;
-
-      // Deal remaining community cards if skipping
-      if (skipToShowdown) {
-        // Run out the board
-        while (gs.community.length < 5 && gs.deck.length > 1) {
-          gs.deck.pop(); // burn
-          gs.community.push(gs.deck.pop());
-        }
-        this.showdown(room);
-        return;
-      }
-
-      // Start from first active player after dealer
-      gs.currentTurn = 0;
-      for (let i = 0; i < gs.turnOrder.length; i++) {
-        const pid = gs.turnOrder[i];
-        const p = room.players.find(p2 => p2.id === pid);
-        if (!gs.foldedPlayers.includes(pid) && p && p.chips > 0) {
-          gs.currentTurn = i;
-          break;
-        }
-      }
-
-      if (gs.phase === 'preflop') {
-        gs.phase = 'flop';
-        gs.deck.pop(); // burn
-        gs.community.push(gs.deck.pop(), gs.deck.pop(), gs.deck.pop());
-      } else if (gs.phase === 'flop') {
-        gs.phase = 'turn';
-        gs.deck.pop();
-        gs.community.push(gs.deck.pop());
-      } else if (gs.phase === 'turn') {
-        gs.phase = 'river';
-        gs.deck.pop();
-        gs.community.push(gs.deck.pop());
-      } else if (gs.phase === 'river') {
-        this.showdown(room);
-        return;
-      }
-      broadcastPlayerHands(room);
-      broadcastToRoom(room, 'players:update', playerList(room));
-      // Trigger AI if it's AI's turn
-      this.scheduleAIAction(room);
-    },
-
-    showdown(room) {
-      const gs = room.gameState;
-      gs.phase = 'showdown';
-      let bestResult = null;
-      let winner = null;
-      gs.handResults = {};
-
-      for (const pid of gs.activePlayers) {
-        const allCards = [...gs.hands[pid], ...gs.community];
-        const result = evaluatePokerHand(allCards);
-        gs.handResults[pid] = result;
-        if (!bestResult || this.compareHands(result, bestResult) > 0) {
-          bestResult = result;
-          winner = pid;
-        }
-      }
-      this.endHand(room, winner);
-    },
-
-    // Compare two poker hand results. Returns >0 if a wins, <0 if b wins, 0 if tie
-    compareHands(a, b) {
-      if (a.rank !== b.rank) return a.rank - b.rank;
-      // Same rank - compare kickers
-      const aKickers = a.kickers || [];
-      const bKickers = b.kickers || [];
-      for (let i = 0; i < Math.max(aKickers.length, bKickers.length); i++) {
-        const ak = aKickers[i] || 0;
-        const bk = bKickers[i] || 0;
-        if (ak !== bk) return ak - bk;
-      }
-      return 0; // True tie
-    },
-
-    endHand(room, winnerId) {
-      const gs = room.gameState;
-      gs.phase = 'result';
-      gs.winner = winnerId;
-      const winner = room.players.find(p => p.id === winnerId);
-      if (winner) winner.chips += gs.pot;
-
-      // Clear AI timer
-      if (room._aiActionTimer) clearTimeout(room._aiActionTimer);
-
-      // Reveal all hands for TV
-      broadcastToRoom(room, 'game:state', {
-        game: 'poker',
-        state: {
-          ...gs,
-          allHands: gs.hands,
-          handResults: gs.handResults || {},
-        },
-      });
-      broadcastToRoom(room, 'players:update', playerList(room));
-
-      setTimeout(() => {
-        if (rooms.has(room.code) && room.currentGame === 'poker') games.poker.start(room);
-      }, 5000);
-    },
-  },
 
   // ── HORSE RACING ──
   horseracing: {
@@ -2036,99 +993,7 @@ const games = {
   },
 };
 
-function sanitizeBJ(gs, showDealer = false) {
-  return {
-    ...gs,
-    deck: undefined,
-    dealerHand: showDealer || gs.phase === 'result'
-      ? gs.dealerHand
-      : [gs.dealerHand[0], { suit: 'hidden', rank: 'hidden' }],
-  };
-}
-
-function broadcastPlayerHands(room) {
-  const gs = room.gameState;
-  if (!gs) return;
-  const isReveal = gs.phase === 'result' || gs.phase === 'showdown';
-  const base = {
-    phase: gs.phase,
-    community: gs.community,
-    pot: gs.pot,
-    currentBet: gs.currentBet,
-    currentTurn: gs.currentTurn,
-    turnOrder: gs.turnOrder,
-    activePlayers: gs.activePlayers,
-    foldedPlayers: gs.foldedPlayers,
-    roundBets: gs.roundBets,
-    winner: gs.winner,
-    allHands: isReveal ? gs.hands : undefined,
-    handResults: isReveal ? gs.handResults : undefined,
-    dealerIdx: gs.dealerIdx,
-    bigBlind: gs.bigBlind,
-  };
-  // Send each player only their own hand
-  room.players.forEach(p => {
-    try {
-      if (p.socket && p.socket.connected) {
-        p.socket.emit('game:state', { game: 'poker', state: { ...base, myHand: gs.hands[p.id] || null } });
-      }
-    } catch (e) {}
-  });
-  // TV gets all hands during showdown, otherwise just community
-  try {
-    if (room.tvSocket && room.tvSocket.connected) {
-      room.tvSocket.emit('game:state', {
-        game: 'poker',
-        state: { ...base, handBacks: Object.fromEntries(gs.turnOrder.map(pid => [pid, gs.hands[pid]?.length || 0])) },
-      });
-    }
-  } catch (e) {}
-}
-
-function countVotes(room) {
-  const counts = { roulette: 0, slots: 0, blackjack: 0, poker: 0, horseracing: 0 };
-  if (room.votes) {
-    for (const g of Object.values(room.votes)) {
-      if (counts[g] !== undefined) counts[g]++;
-    }
-  }
-  return counts;
-}
-
-function finishVoting(room) {
-  if (!room.votes || Object.keys(room.votes).length === 0) return;
-
-  // Count votes
-  const counts = { roulette: 0, slots: 0, blackjack: 0, poker: 0, horseracing: 0 };
-  for (const g of Object.values(room.votes)) {
-    if (counts[g] !== undefined) counts[g]++;
-  }
-
-  // Find winner (most votes, random tiebreak)
-  let maxVotes = 0;
-  let winners = [];
-  for (const [game, count] of Object.entries(counts)) {
-    if (count > maxVotes) { maxVotes = count; winners = [game]; }
-    else if (count === maxVotes && count > 0) winners.push(game);
-  }
-
-  const winningGame = winners[Math.floor(Math.random() * winners.length)];
-  console.log(`[VOTE] Winner: ${winningGame} with ${maxVotes} votes`);
-
-  broadcastToRoom(room, 'vote:winner', { game: winningGame });
-
-  // Start the game after a short delay
-  setTimeout(() => {
-    if (!rooms.has(room.code)) return;
-    room.currentGame = winningGame;
-    room.votes = {};
-    broadcastToRoom(room, 'game:started', { game: winningGame });
-    if (games[winningGame]) games[winningGame].start(room);
-  }, 2500);
-}
-
 function startBettingTimer(room, seconds) {
-  // Clear any existing timer
   if (room._timerInterval) clearInterval(room._timerInterval);
   let timer = seconds;
   const interval = setInterval(() => {
@@ -2143,8 +1008,7 @@ function startBettingTimer(room, seconds) {
     if (timer <= 0) {
       clearInterval(interval);
       room._timerInterval = null;
-      if (room.currentGame === 'roulette') games.roulette.spin(room);
-      else if (room.currentGame === 'horseracing') games.horseracing.race(room);
+      if (room.currentGame === 'horseracing') games.horseracing.race(room);
     }
   }, 1000);
   room._timerInterval = interval;
@@ -2155,19 +1019,6 @@ function startBettingTimer(room, seconds) {
 io.on('connection', (socket) => {
   let currentRoom = null;
   let playerId = null;
-
-  socket.on('room:create', (data) => {
-    if (!data || typeof data !== 'object') return;
-    const { playerName, avatar } = data;
-    if (typeof playerName !== 'string') return;
-    const room = createRoom(playerName);
-    playerId = uuidv4();
-    const player = { id: playerId, name: playerName, chips: 1000, socket, avatar: avatar || 0 };
-    room.players.push(player);
-    room.hostId = playerId;
-    currentRoom = room;
-    socket.emit('room:created', { code: room.code, playerId, players: playerList(room) });
-  });
 
   socket.on('room:join', (data) => {
     if (!data || typeof data !== 'object') return;
@@ -2195,7 +1046,6 @@ io.on('connection', (socket) => {
     if (!room) return socket.emit('room:error', { message: 'Room not found' });
     const existing = room.players.find(p => p.id === existingPlayerId);
     if (!existing) return socket.emit('room:error', { message: 'Session expired' });
-    // Reattach socket
     existing.socket = socket;
     if (existing._disconnectTimer) { clearTimeout(existing._disconnectTimer); delete existing._disconnectTimer; }
     playerId = existingPlayerId;
@@ -2214,7 +1064,7 @@ io.on('connection', (socket) => {
   socket.on('tv:create', () => {
     const room = createRoom('TV');
     room.tvSocket = socket;
-    room.tvHostSocket = socket; // TV is the host for game selection
+    room.tvHostSocket = socket;
     currentRoom = room;
     socket.emit('tv:created', { code: room.code, players: playerList(room) });
   });
@@ -2233,129 +1083,19 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Player signals everyone is in - start voting
+  // Player signals everyone is in - start horse racing directly
   socket.on('lobby:ready', () => {
     if (!currentRoom) return;
-    // Clear any existing vote timer
-    if (currentRoom._voteTimerInterval) {
-      clearInterval(currentRoom._voteTimerInterval);
-      currentRoom._voteTimerInterval = null;
-    }
-    currentRoom.votes = {};
-    currentRoom.voteTimer = null;
-    currentRoom.readyPlayers = new Set();
-    broadcastToRoom(currentRoom, 'lobby:vote-start');
+    if (currentRoom.currentGame) return; // already in a game
+    currentRoom.currentGame = 'horseracing';
+    broadcastToRoom(currentRoom, 'game:started', { game: 'horseracing' });
+    games.horseracing.start(currentRoom);
   });
 
-  // Player votes for a game
-  socket.on('game:vote', (data) => {
+  // Horse racing bet
+  socket.on('horseracing:bet', (data) => {
     if (!data || typeof data !== 'object') return;
-    const { game } = data;
-    if (!currentRoom || !game) return;
-    if (!currentRoom.votes) currentRoom.votes = {};
-    currentRoom.votes[playerId] = game;
-
-    const counts = countVotes(currentRoom);
-
-    // Start 30s timer on first vote
-    if (Object.keys(currentRoom.votes).length === 1 && !currentRoom._voteTimerInterval) {
-      const voteRoom = currentRoom; // capture reference
-      voteRoom.voteTimer = 30;
-      voteRoom._voteTimerInterval = setInterval(() => {
-        if (!rooms.has(voteRoom.code)) { clearInterval(voteRoom._voteTimerInterval); return; }
-        voteRoom.voteTimer--;
-        const freshCounts = countVotes(voteRoom);
-        broadcastToRoom(voteRoom, 'vote:update', { votes: freshCounts, timer: voteRoom.voteTimer });
-        if (voteRoom.voteTimer <= 0) {
-          clearInterval(voteRoom._voteTimerInterval);
-          voteRoom._voteTimerInterval = null;
-          finishVoting(voteRoom);
-        }
-      }, 1000);
-    }
-
-    broadcastToRoom(currentRoom, 'vote:update', { votes: counts, timer: currentRoom.voteTimer });
-
-    // If everyone has voted, finish immediately
-    if (currentRoom.players.length > 0 && Object.keys(currentRoom.votes).length >= currentRoom.players.length) {
-      if (currentRoom._voteTimerInterval) {
-        clearInterval(currentRoom._voteTimerInterval);
-        currentRoom._voteTimerInterval = null;
-      }
-      const finishRoom = currentRoom;
-      setTimeout(() => { if (rooms.has(finishRoom.code)) finishVoting(finishRoom); }, 1500);
-    }
-  });
-
-  // Player wants to end the current game and go back to lobby
-  socket.on('game:end-request', () => {
-    if (!currentRoom) return;
-    if (!currentRoom.readyPlayers) currentRoom.readyPlayers = new Set();
-    currentRoom.readyPlayers.add(playerId);
-    broadcastToRoom(currentRoom, 'lobby:ready-update', {
-      readyCount: currentRoom.readyPlayers.size,
-      totalCount: currentRoom.players.length,
-    });
-    // When all players are ready, end the game and go to voting
-    if (currentRoom.readyPlayers.size >= currentRoom.players.length) {
-      // Clear all game timers and intervals
-      if (currentRoom._timerInterval) {
-        clearInterval(currentRoom._timerInterval);
-        currentRoom._timerInterval = null;
-      }
-      if (currentRoom._raceInterval) {
-        clearInterval(currentRoom._raceInterval);
-        currentRoom._raceInterval = null;
-      }
-      if (currentRoom._oddsInterval) {
-        clearInterval(currentRoom._oddsInterval);
-        currentRoom._oddsInterval = null;
-      }
-      if (currentRoom._slotsTimer) {
-        clearInterval(currentRoom._slotsTimer);
-        currentRoom._slotsTimer = null;
-      }
-      if (currentRoom._aiActionTimer) {
-        clearTimeout(currentRoom._aiActionTimer);
-        currentRoom._aiActionTimer = null;
-      }
-      clearTimeout(currentRoom._betBroadcastTimeout);
-      currentRoom.currentGame = null;
-      currentRoom.gameState = null;
-      currentRoom.votes = {};
-      currentRoom.readyPlayers = new Set();
-      if (currentRoom._voteTimerInterval) {
-        clearInterval(currentRoom._voteTimerInterval);
-        currentRoom._voteTimerInterval = null;
-      }
-      currentRoom.voteTimer = null;
-      broadcastToRoom(currentRoom, 'lobby:vote-start');
-    }
-  });
-
-  // TV selects game (when TV is host) - kept as fallback
-  socket.on('tv:select-game', (data) => {
-    if (!data || typeof data !== 'object') return;
-    const { game } = data;
-    if (!currentRoom || currentRoom.tvHostSocket !== socket) return;
-    currentRoom.currentGame = game;
-    broadcastToRoom(currentRoom, 'game:started', { game });
-    if (games[game]) games[game].start(currentRoom);
-  });
-
-  socket.on('game:select', (data) => {
-    if (!data || typeof data !== 'object') return;
-    const { game } = data;
-    if (!currentRoom || playerId !== currentRoom.hostId) return;
-    currentRoom.currentGame = game;
-    broadcastToRoom(currentRoom, 'game:started', { game });
-    if (games[game]) games[game].start(currentRoom);
-  });
-
-  // Game actions
-  socket.on('roulette:bet', (bet) => {
-    if (!bet || typeof bet !== 'object') return;
-    if (currentRoom?.currentGame === 'roulette') games.roulette.placeBet(currentRoom, playerId, bet);
+    if (currentRoom?.currentGame === 'horseracing') games.horseracing.placeBet(currentRoom, playerId, data.horseId, data.amount, data.betType, data.trifecta);
   });
 
   // Client requests current game state (fallback for missed updates)
@@ -2365,51 +1105,31 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('slots:bet', (data) => {
-    if (!data || typeof data !== 'object') return;
-    if (currentRoom?.currentGame === 'slots') games.slots.placeBet(currentRoom, playerId, data.amount);
-  });
-
-  socket.on('slots:free-spin', () => {
-    if (currentRoom?.currentGame === 'slots') games.slots.freeSpin(currentRoom, playerId);
-  });
-
-  // Legacy support
-  socket.on('slots:spin', (data) => {
-    if (!data || typeof data !== 'object') return;
-    if (currentRoom?.currentGame === 'slots') games.slots.placeBet(currentRoom, playerId, data.amount);
-  });
-
-  socket.on('blackjack:bet', (data) => {
-    if (!data || typeof data !== 'object') return;
-    if (currentRoom?.currentGame === 'blackjack') games.blackjack.placeBet(currentRoom, playerId, data.amount);
-  });
-
-  socket.on('blackjack:hit', () => {
-    if (currentRoom?.currentGame === 'blackjack') games.blackjack.hit(currentRoom, playerId);
-  });
-
-  socket.on('blackjack:stand', () => {
-    if (currentRoom?.currentGame === 'blackjack') games.blackjack.stand(currentRoom, playerId);
-  });
-
-  socket.on('blackjack:double', () => {
-    if (currentRoom?.currentGame === 'blackjack') games.blackjack.doubleDown(currentRoom, playerId);
-  });
-
-  socket.on('poker:action', (data) => {
-    if (!data || typeof data !== 'object') return;
-    if (currentRoom?.currentGame === 'poker') games.poker.action(currentRoom, playerId, data.action, data.amount);
-  });
-
-  socket.on('horseracing:bet', (data) => {
-    if (!data || typeof data !== 'object') return;
-    if (currentRoom?.currentGame === 'horseracing') games.horseracing.placeBet(currentRoom, playerId, data.horseId, data.amount, data.betType, data.trifecta);
+  // Player wants to end the current game — new meeting
+  socket.on('game:end-request', () => {
+    if (!currentRoom) return;
+    if (!currentRoom.readyPlayers) currentRoom.readyPlayers = new Set();
+    currentRoom.readyPlayers.add(playerId);
+    broadcastToRoom(currentRoom, 'lobby:ready-update', {
+      readyCount: currentRoom.readyPlayers.size,
+      totalCount: currentRoom.players.length,
+    });
+    // When all players agree, start a fresh meeting
+    if (currentRoom.readyPlayers.size >= currentRoom.players.length) {
+      // Clear all timers
+      if (currentRoom._timerInterval) { clearInterval(currentRoom._timerInterval); currentRoom._timerInterval = null; }
+      if (currentRoom._raceInterval) { clearInterval(currentRoom._raceInterval); currentRoom._raceInterval = null; }
+      if (currentRoom._oddsInterval) { clearInterval(currentRoom._oddsInterval); currentRoom._oddsInterval = null; }
+      clearTimeout(currentRoom._betBroadcastTimeout);
+      currentRoom.readyPlayers = new Set();
+      // Start a new race
+      games.horseracing.start(currentRoom);
+    }
   });
 
   socket.on('disconnect', () => {
     if (!currentRoom) return;
-    const room = currentRoom; // capture reference
+    const room = currentRoom;
     const pid = playerId;
 
     // TV socket — remove immediately
@@ -2421,18 +1141,13 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.id === pid);
     if (player) {
       player._disconnectTimer = setTimeout(() => {
-        // Room may have been deleted already
         if (!rooms.has(room.code)) return;
         room.players = room.players.filter(p => p.id !== pid);
         if (room.readyPlayers) room.readyPlayers.delete(pid);
-        if (room.votes) delete room.votes[pid];
         if (room.players.length === 0 && !room.tvSocket) {
           if (room._timerInterval) clearInterval(room._timerInterval);
-          if (room._voteTimerInterval) clearInterval(room._voteTimerInterval);
           if (room._raceInterval) clearInterval(room._raceInterval);
           if (room._oddsInterval) clearInterval(room._oddsInterval);
-          if (room._slotsTimer) clearInterval(room._slotsTimer);
-          if (room._aiActionTimer) clearTimeout(room._aiActionTimer);
           clearTimeout(room._betBroadcastTimeout);
           rooms.delete(room.code);
         } else {
@@ -2441,7 +1156,7 @@ io.on('connection', (socket) => {
           }
           broadcastToRoom(room, 'players:update', playerList(room));
         }
-      }, 120000); // 2 minute grace period
+      }, 120000);
     }
   });
 });
@@ -2452,24 +1167,20 @@ setInterval(() => {
     const hasTV = room.tvSocket && room.tvSocket.connected;
     const hasPlayers = room.players.some(p => p.socket && p.socket.connected);
     if (!hasTV && !hasPlayers) {
-      // Clean up all intervals
       if (room._timerInterval) clearInterval(room._timerInterval);
-      if (room._voteTimerInterval) clearInterval(room._voteTimerInterval);
       if (room._raceInterval) clearInterval(room._raceInterval);
       if (room._oddsInterval) clearInterval(room._oddsInterval);
-      if (room._slotsTimer) clearInterval(room._slotsTimer);
-      if (room._aiActionTimer) clearTimeout(room._aiActionTimer);
       clearTimeout(room._betBroadcastTimeout);
       room.players.forEach(p => { if (p._disconnectTimer) clearTimeout(p._disconnectTimer); });
       rooms.delete(code);
       console.log(`[CLEANUP] Room ${code} removed (no connections)`);
     }
   }
-}, 30000); // every 30 seconds
+}, 30000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🎰 TV Casino running on http://localhost:${PORT}`);
+  console.log(`\n🏇 Race Day running on http://localhost:${PORT}`);
   console.log(`📺 TV View: http://localhost:${PORT}/tv`);
   console.log(`📱 Open on your phone to play!\n`);
 });

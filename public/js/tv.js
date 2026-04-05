@@ -1,19 +1,12 @@
-// ── TV Casino - TV Display ──────────────────────────────────────────────
+// ── Race Day - TV Display ───────────────────────────────────────────────
 
 const socket = io();
 
 const AVATARS = ['😎', '🤠', '👑', '🎩', '🦊', '🐺', '🦁', '🐲', '💀', '🤖', '👽', '🎭'];
-const SUIT_SYMBOLS = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
-const SLOT_SYMBOLS = {
-  cherry: '🍒', lemon: '🍋', orange: '🍊', plum: '🍇',
-  bell: '🔔', bar: '📊', seven: '7️⃣', diamond: '💎'
-};
-const RED_NUMBERS = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
 
 let roomCode = '';
 let players = [];
 let currentGame = null;
-let lastRoulettePhase = null;
 let floatingPositions = {};
 let floatAnimFrameId = null;
 
@@ -95,7 +88,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 init();
-
 // ── Floating Players ────────────────────────────────────────────────────
 
 function updateFloatingPlayers() {
@@ -201,7 +193,7 @@ socket.on('tv:connected', (data) => {
   renderPlayers();
   if (data.currentGame) {
     currentGame = data.currentGame;
-    showTVScreen('tv' + capitalize(data.currentGame));
+    showTVScreen('tvHorseracing');
   }
 });
 
@@ -217,60 +209,15 @@ socket.on('players:update', (data) => {
   if (data.length > prevCount) CasinoAudio.playerJoin();
 });
 
-// ── Voting ──────────────────────────────────────────────────────────────
-
-socket.on('lobby:vote-start', () => {
-  showTVScreen('tvVoting');
-  CasinoAudio.gameStart();
-  // Reset
-  document.querySelectorAll('.tv-vote-card').forEach(c => c.classList.remove('winner'));
-  ['roulette','slots','blackjack','poker','horseracing'].forEach(g => {
-    const count = document.getElementById(`tvVoteCount-${g}`);
-    const fill = document.getElementById(`tvVoteFill-${g}`);
-    if (count) count.textContent = '0';
-    if (fill) fill.style.width = '0%';
-  });
-});
-
-socket.on('vote:update', ({ votes, timer }) => {
-  const total = Object.values(votes).reduce((a, b) => a + b, 0) || 1;
-  for (const [game, count] of Object.entries(votes)) {
-    const countEl = document.getElementById(`tvVoteCount-${game}`);
-    const fillEl = document.getElementById(`tvVoteFill-${game}`);
-    if (countEl) countEl.textContent = count;
-    if (fillEl) fillEl.style.width = `${(count / total) * 100}%`;
-  }
-  const timerEl = document.getElementById('tvVoteTimer');
-  if (timerEl && timer !== undefined && timer !== null) {
-    timerEl.textContent = timer > 0 ? `${timer}s` : "Time's up!";
-    timerEl.style.color = timer <= 5 ? 'var(--red)' : 'var(--gold)';
-  }
-  if (timer <= 5 && timer > 0) CasinoAudio.urgentTick();
-});
-
-socket.on('vote:winner', ({ game }) => {
-  document.querySelectorAll('.tv-vote-card').forEach(c => c.classList.remove('winner'));
-  const card = document.querySelector(`.tv-vote-card[data-game="${game}"]`);
-  if (card) card.classList.add('winner');
-  CasinoAudio.bigWin();
-  showConfetti();
-});
-
-// ── Game Events ─────────────────────────────────────────────────────────
-
 socket.on('game:started', ({ game }) => {
   currentGame = game;
-  showTVScreen('tv' + capitalize(game));
+  showTVScreen('tvHorseracing');
   CasinoAudio.gameStart();
-  renderPlayers(); // render players bar in game screen
+  renderPlayers();
 });
 
 socket.on('game:state', ({ game, state }) => {
-  if (game === 'roulette') renderTVRoulette(state);
-  else if (game === 'slots') renderTVSlots(state);
-  else if (game === 'blackjack') renderTVBlackjack(state);
-  else if (game === 'poker') renderTVPoker(state);
-  else if (game === 'horseracing') renderTVHorseRacing(state);
+  if (game === 'horseracing') renderTVHorseRacing(state);
 });
 
 socket.on('game:timer', ({ timer }) => {
@@ -284,16 +231,10 @@ socket.on('game:timer', ({ timer }) => {
 });
 
 socket.on('lobby:ready-update', ({ readyCount, totalCount }) => {
-  // Could show a "players ready" indicator on TV during games
-  // For now this is handled by the vote-start event when all ready
+  // Could show indicator on TV
 });
 
 // ── Helpers ─────────────────────────────────────────────────────────────
-
-function capitalize(s) {
-  if (s === 'horseracing') return 'Horseracing';
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 function showTVScreen(id) {
   document.querySelectorAll('.tv-screen').forEach(s => s.classList.remove('active'));
@@ -305,15 +246,7 @@ function showTVScreen(id) {
     Race3D.stopRendering();
     Race3D.dispose();
   }
-  // Stop gallop audio
   if (id !== 'tvHorseracing') CasinoAudio.stopGallop();
-  // Reset phase trackers so audio triggers properly on game re-entry
-  lastRoulettePhase = null;
-  lastSlotsPhase = null;
-  lastBJPhase = null;
-  lastPokerPhase = null;
-  lastRacePhase = null;
-  lastSpokenText = null;
 }
 
 function renderPlayers() {
@@ -324,29 +257,7 @@ function renderPlayers() {
       <div class="chips">$${p.chips.toLocaleString()}</div>
     </div>
   `).join('');
-  // Update all player bars in game screens
   document.querySelectorAll('.tv-players').forEach(el => el.innerHTML = html);
-}
-
-function renderTVCard(card) {
-  if (!card || card.rank === 'hidden') return '<div class="tv-card hidden"></div>';
-  const suit = SUIT_SYMBOLS[card.suit] || '';
-  return `<div class="tv-card ${card.suit}">
-    <span class="card-rank">${card.rank}</span>
-    <span class="card-suit">${suit}</span>
-  </div>`;
-}
-
-function handValueCalc(hand) {
-  let total = 0, aces = 0;
-  for (const c of hand) {
-    if (!c || c.rank === 'hidden') continue;
-    if (['J','Q','K'].includes(c.rank)) total += 10;
-    else if (c.rank === 'A') { total += 11; aces++; }
-    else total += parseInt(c.rank);
-  }
-  while (total > 21 && aces > 0) { total -= 10; aces--; }
-  return total;
 }
 
 function showConfetti() {
@@ -363,372 +274,6 @@ function showConfetti() {
     container.appendChild(piece);
   }
   setTimeout(() => container.innerHTML = '', 3000);
-}
-
-// ── TV ROULETTE ─────────────────────────────────────────────────────────
-
-function renderTVRoulette(state) {
-  const el = document.getElementById('tvRouletteContent');
-
-  if (state.phase === 'betting') {
-    if (lastRoulettePhase !== 'betting') CasinoAudio.chip();
-    lastRoulettePhase = 'betting';
-    const betEntries = Object.entries(state.bets || {});
-    el.innerHTML = `
-      <div class="tv-timer" ${state.timer <= 5 ? 'style="color:var(--red)"' : ''}>${state.timer || ''}</div>
-      <div class="tv-status">Place your bets!</div>
-      <div class="tv-roulette-layout">
-        <div class="tv-roulette-center">
-          <div class="tv-roulette-wheel"><div class="center">?</div></div>
-        </div>
-        ${betEntries.length > 0 ? `
-          <div class="tv-bets-list">
-            ${betEntries.map(([pid, bets]) => {
-              const p = players.find(pl => pl.id === pid);
-              return bets.map(b => `
-                <div class="tv-bet-card">
-                  <div class="player-name">${p?.name || 'Player'}</div>
-                  <div class="bet-info">$${b.amount} on ${b.value !== undefined ? b.value : b.type}</div>
-                </div>
-              `).join('');
-            }).join('')}
-          </div>
-        ` : ''}
-      </div>
-      ${renderTVHistory(state.history)}
-    `;
-  } else if (state.phase === 'spinning') {
-    if (lastRoulettePhase !== 'spinning') CasinoAudio.spin();
-    lastRoulettePhase = 'spinning';
-    el.innerHTML = `
-      <div class="tv-roulette-layout">
-        <div class="tv-roulette-center">
-          <div class="tv-roulette-wheel spinning"><div class="center">?</div></div>
-          <div class="tv-status" style="font-size:28px;color:var(--gold);margin-top:8px">Spinning...</div>
-        </div>
-      </div>
-    `;
-    clearTimeout(window._tvSpinTimeout);
-    window._tvSpinTimeout = setTimeout(() => { socket.emit('game:request-state'); }, 7000);
-  } else if (state.phase === 'result' && state.result) {
-    clearTimeout(window._tvSpinTimeout);
-    if (lastRoulettePhase !== 'result') {
-      CasinoAudio.ballLand();
-      const winners = Object.entries(state.bets || {}).some(([, bets]) => bets.some(b => b.won));
-      setTimeout(() => { if (winners) CasinoAudio.bigWin(); else CasinoAudio.lose(); }, 400);
-    }
-    lastRoulettePhase = 'result';
-    el.innerHTML = `
-      <div class="tv-roulette-layout">
-        <div class="tv-roulette-center">
-          <div class="tv-result-display">
-            <div class="tv-result-number ${state.result.color}">${state.result.number}</div>
-            <div class="tv-result-color">${state.result.color}</div>
-          </div>
-        </div>
-        <div class="tv-bets-list">
-          ${Object.entries(state.bets || {}).map(([pid, bets]) => {
-            const p = players.find(pl => pl.id === pid);
-            return bets.map(b => `
-              <div class="tv-bet-card" style="border-color:${b.won ? 'var(--green)' : 'var(--red)'}">
-                <div class="player-name">${p?.name || 'Player'}</div>
-                <div class="bet-info" style="color:${b.won ? 'var(--green)' : 'var(--red)'}">
-                  ${b.won ? `WON $${b.winAmount}` : `Lost $${b.amount}`}
-                </div>
-              </div>
-            `).join('');
-          }).join('')}
-        </div>
-      </div>
-      ${renderTVHistory(state.history)}
-    `;
-    const winners = Object.entries(state.bets || {}).some(([, bets]) => bets.some(b => b.won));
-    if (winners) showConfetti();
-  }
-}
-
-function renderTVHistory(history) {
-  if (!history || history.length === 0) return '';
-  return `<div class="tv-history">
-    ${history.slice(0, 15).map(h =>
-      `<div class="tv-history-num ${h.color}">${h.number}</div>`
-    ).join('')}
-  </div>`;
-}
-
-// ── TV SLOTS ────────────────────────────────────────────────────────────
-
-const TV_SLOT_SYMBOLS = { cherry:'🍒', lemon:'🍋', orange:'🍊', plum:'🍇', bell:'🔔', bar:'📊', seven:'7️⃣', diamond:'💎', wild:'⭐' };
-let lastSlotsPhase = null;
-
-function renderTVSlots(state) {
-  const el = document.getElementById('tvSlotsContent');
-  const phase = state.phase || 'betting';
-  const results = Object.entries(state.results || {});
-  const jackpot = state.jackpot || 500;
-  const anyJackpot = results.some(([,r]) => r.jackpotWin);
-
-  // Audio triggers
-  if (phase !== lastSlotsPhase) {
-    if (phase === 'spinning') CasinoAudio.slotSpin();
-    if (phase === 'results') {
-      CasinoAudio.slotStop();
-      const anyWin = results.some(([,r]) => r.totalWin > 0);
-      if (anyWin) setTimeout(() => CasinoAudio.win(), 300);
-      if (anyJackpot) setTimeout(() => CasinoAudio.bigWin(), 500);
-    }
-    lastSlotsPhase = phase;
-  }
-
-  if (phase === 'results' && results.length > 0) {
-    // Show all players' results side by side
-    el.innerHTML = `
-      <div class="tv-slots-machine" style="max-width:900px;margin:0 auto">
-        <div class="tv-slots-title">LUCKY SLOTS — Round ${state.roundNumber || 1}</div>
-        ${anyJackpot ? '<div style="text-align:center;font-size:32px;color:#ff0;font-weight:900;animation:pulse 0.5s infinite">🎰 JACKPOT! 🎰</div>' : ''}
-        <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:12px">
-          ${results.map(([pid, result]) => {
-            const p = players.find(pl => pl.id === pid);
-            return `
-              <div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:12px;min-width:200px;
-                          border:1px solid ${result.totalWin > 0 ? 'rgba(39,174,96,0.4)' : 'rgba(255,255,255,0.06)'}">
-                <div style="text-align:center;font-size:14px;font-weight:700;margin-bottom:6px;
-                            color:${result.totalWin > 0 ? 'var(--green)' : 'var(--text-dim)'}">
-                  ${p?.name || 'Player'} ${result.jackpotWin ? '🏆' : ''}
-                </div>
-                <div class="tv-reels" style="justify-content:center">
-                  ${result.reels.map(reel => `
-                    <div class="tv-reel" style="width:55px;height:120px">
-                      ${reel.map((sym, si) => `
-                        <div class="tv-slot-symbol" style="font-size:24px;height:40px;
-                          ${si === 1 ? 'background:rgba(201,168,76,0.15)' : ''}">${TV_SLOT_SYMBOLS[sym] || sym}</div>
-                      `).join('')}
-                    </div>
-                  `).join('')}
-                </div>
-                ${result.totalWin > 0 ? `
-                  <div style="text-align:center;color:var(--green);font-weight:800;font-size:16px;margin-top:6px">
-                    +$${result.totalWin}${result.paylines?.length > 1 ? ' (' + result.paylines.length + ' lines)' : ''}
-                  </div>
-                  ${result.jackpotWin ? `<div style="text-align:center;color:#ff0;font-size:14px">JACKPOT +$${result.jackpotAmount}</div>` : ''}
-                ` : `<div style="text-align:center;color:var(--text-dim);font-size:13px;margin-top:6px">No win</div>`}
-              </div>
-            `;
-          }).join('')}
-        </div>
-
-        <!-- Leaderboard -->
-        ${Object.keys(state.leaderboard || {}).length > 0 ? `
-          <div style="margin-top:16px;display:flex;justify-content:center;gap:24px">
-            ${Object.entries(state.leaderboard).sort((a,b) => b[1] - a[1]).slice(0, 5).map(([pid, net], i) => {
-              const p = players.find(pl => pl.id === pid);
-              const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
-              return `<div style="text-align:center">
-                <div style="font-size:18px">${medal || (i+1)+'.'}</div>
-                <div style="font-size:13px;font-weight:700">${p?.name || '?'}</div>
-                <div style="font-size:12px;color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">$${net >= 0 ? '+' : ''}${net}</div>
-              </div>`;
-            }).join('')}
-          </div>
-        ` : ''}
-      </div>
-    `;
-    const anyWin = results.some(([,r]) => r.totalWin > 0);
-    if (anyWin) showConfetti();
-  } else if (phase === 'spinning') {
-    el.innerHTML = `
-      <div class="tv-slots-machine">
-        <div class="tv-slots-title">LUCKY SLOTS — Round ${state.roundNumber || 1}</div>
-        <div style="text-align:center;font-size:24px;color:var(--gold);margin:30px 0" class="animate-pulse">
-          🎰 Spinning... 🎰
-        </div>
-        <div style="text-align:center;font-size:14px;color:var(--text-dim)">
-          ${Object.keys(state.bets || {}).length} players spinning
-        </div>
-      </div>
-    `;
-  } else {
-    // Betting phase
-    const betCount = Object.keys(state.bets || {}).length;
-    const totalPlayers = players.length;
-    el.innerHTML = `
-      <div class="tv-slots-machine">
-        <div class="tv-slots-title">LUCKY SLOTS — Round ${state.roundNumber || 1}</div>
-        <div style="text-align:center;margin:16px 0">
-          <div style="font-size:12px;color:var(--gold);text-transform:uppercase;letter-spacing:2px">Progressive Jackpot</div>
-          <div style="font-size:36px;font-weight:900;color:var(--gold)">$${jackpot.toLocaleString()}</div>
-        </div>
-        <div class="tv-reels" style="justify-content:center">
-          ${[0,1,2].map(() => `
-            <div class="tv-reel">
-              <div class="tv-slot-symbol">🍒</div>
-              <div class="tv-slot-symbol middle">❓</div>
-              <div class="tv-slot-symbol">🍋</div>
-            </div>
-          `).join('')}
-        </div>
-        <div style="text-align:center;margin-top:16px;font-size:18px;color:var(--text-dim)">
-          ${betCount} / ${totalPlayers} players ready
-          ${state.timer ? ` • ${state.timer}s` : ''}
-        </div>
-        <div style="text-align:center;font-size:13px;color:var(--text-dim);margin-top:8px">
-          5 Paylines • Wild ⭐ Substitution • Free Spins
-        </div>
-      </div>
-    `;
-  }
-}
-
-// ── TV BLACKJACK ────────────────────────────────────────────────────────
-
-let lastBJPhase = null;
-
-function renderTVBlackjack(state) {
-  const el = document.getElementById('tvBlackjackContent');
-  const dealerHand = state.dealerHand || [];
-  const dealerVal = dealerHand.every(c => c.rank !== 'hidden') ? handValueCalc(dealerHand) : '?';
-
-  if (state.phase === 'betting') {
-    if (lastBJPhase !== 'betting') CasinoAudio.chip();
-    lastBJPhase = 'betting';
-    const betters = Object.keys(state.bets || {});
-    el.innerHTML = `
-      <div class="tv-bj-table">
-        <div style="text-align:center;font-size:26px;font-weight:800;color:var(--gold)">BLACKJACK</div>
-        <div class="tv-status">Place your bets!</div>
-        <div style="text-align:center;margin-top:8px;font-size:16px;color:var(--text-dim)">
-          ${betters.length} player(s) ready
-        </div>
-      </div>
-    `;
-    return;
-  }
-
-  if (state.phase !== lastBJPhase) {
-    if (state.phase === 'playing') CasinoAudio.card();
-    else if (state.phase === 'result') {
-      const anyWin = Object.values(state.results || {}).some(r => r === 'win' || r === 'blackjack_win');
-      if (anyWin) CasinoAudio.win(); else CasinoAudio.lose();
-    }
-    lastBJPhase = state.phase;
-  }
-
-  const playerHands = Object.entries(state.hands || {});
-
-  el.innerHTML = `
-    <div class="tv-bj-table">
-      <div class="tv-dealer-area">
-        <div class="tv-hand-label">Dealer ${dealerVal !== '?' ? `(${dealerVal})` : ''}</div>
-        <div class="tv-cards-row">${dealerHand.map(c => renderTVCard(c)).join('')}</div>
-      </div>
-      <div style="border-top:2px solid rgba(255,255,255,0.1);margin:8px 0"></div>
-      <div class="tv-players-area">
-        <div class="tv-hand-label">Players</div>
-        <div class="tv-player-hands">
-          ${playerHands.map(([pid, hand]) => {
-            const p = players.find(pl => pl.id === pid);
-            const val = handValueCalc(hand);
-            const result = state.results?.[pid];
-            const isActive = state.turnOrder?.[state.currentTurn] === pid;
-            let cls = '';
-            if (isActive && !result) cls = 'active';
-            if (result === 'bust') cls = 'bust';
-            if (result === 'win' || result === 'blackjack_win') cls = 'win';
-            if (result === 'lose') cls = 'lose';
-
-            return `
-              <div class="tv-player-hand ${cls}">
-                <div style="font-size:14px;font-weight:700;margin-bottom:4px">
-                  ${AVATARS[p?.avatar] || '😎'} ${p?.name || 'Player'}
-                </div>
-                <div class="tv-cards-row">${hand.map(c => renderTVCard(c)).join('')}</div>
-                <div class="tv-hand-value">${val}</div>
-                ${result ? `
-                  <div class="tv-bj-result" style="color:${
-                    result.includes('win') || result === 'blackjack_win' ? 'var(--green)' :
-                    result === 'push' ? 'var(--gold)' : 'var(--red)'}">
-                    ${result === 'blackjack_win' ? 'BLACKJACK!' :
-                      result === 'win' ? 'WIN!' :
-                      result === 'bust' ? 'BUST' :
-                      result === 'push' ? 'PUSH' : 'LOSE'}
-                  </div>
-                ` : ''}
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    </div>
-  `;
-
-  if (state.phase === 'result') {
-    const anyWin = Object.values(state.results || {}).some(r => r === 'win' || r === 'blackjack_win');
-    if (anyWin) showConfetti();
-  }
-}
-
-// ── TV POKER ────────────────────────────────────────────────────────────
-
-let lastPokerPhase = null;
-
-function renderTVPoker(state) {
-  const el = document.getElementById('tvPokerContent');
-  const community = state.community || [];
-  const isShowdown = state.phase === 'result' || state.phase === 'showdown';
-
-  if (state.phase !== lastPokerPhase) {
-    if (['flop','turn','river'].includes(state.phase)) CasinoAudio.card();
-    if (state.phase === 'result' && state.winner) CasinoAudio.bigWin();
-    lastPokerPhase = state.phase;
-  }
-
-  el.innerHTML = `
-    <div class="tv-poker-table">
-      <div class="tv-pot">Pot: $${state.pot || 0}</div>
-      <div class="tv-community-cards">
-        ${community.length > 0 ? community.map(c => renderTVCard(c)).join('') :
-          `<div style="color:rgba(255,255,255,0.3);font-size:16px">
-            ${state.phase === 'preflop' ? 'Pre-flop' : 'Waiting...'}
-          </div>`}
-      </div>
-      <div style="font-size:14px;color:var(--text-dim);margin:4px 0;text-transform:uppercase">${state.phase}</div>
-      <div class="tv-poker-players">
-        ${(state.turnOrder || []).map((pid, idx) => {
-          const p = players.find(pl => pl.id === pid);
-          const isActive = state.currentTurn === idx && !state.foldedPlayers?.includes(pid);
-          const isFolded = state.foldedPlayers?.includes(pid);
-          const isWinner = state.winner === pid;
-          const hand = isShowdown && state.allHands?.[pid];
-          const handResult = isShowdown && state.handResults?.[pid];
-          const roundBet = state.roundBets?.[pid] || 0;
-          const aiTag = p?.isAI ? ' <span style="color:rgba(255,255,255,0.4);font-size:10px">[AI]</span>' : '';
-
-          return `
-            <div class="tv-poker-seat ${isActive ? 'active' : ''} ${isFolded ? 'folded' : ''} ${isWinner ? 'winner' : ''}">
-              <div style="font-size:22px">${AVATARS[p?.avatar] || '😎'}</div>
-              <div style="font-size:13px;font-weight:700">${p?.name || 'Player'}${aiTag}</div>
-              <div style="color:var(--gold);font-size:12px">$${p?.chips?.toLocaleString() || 0}</div>
-              ${roundBet > 0 ? `<div style="color:var(--green);font-size:11px">Bet: $${roundBet}</div>` : ''}
-              ${isFolded ? '<div style="color:var(--red);font-size:11px">FOLDED</div>' : ''}
-              ${isWinner ? `<div style="color:var(--green);font-size:14px;font-weight:800">WINNER!</div>` : ''}
-              ${handResult ? `<div style="color:var(--gold);font-size:10px">${handResult.name}</div>` : ''}
-              ${hand ? `
-                <div style="display:flex;gap:3px;margin-top:2px;justify-content:center">
-                  ${Array.isArray(hand) ? hand.map(c => renderTVCard(c)).join('') : ''}
-                </div>
-              ` : `
-                <div style="display:flex;gap:2px;margin-top:2px;justify-content:center">
-                  ${!isFolded ? '<div class="tv-card hidden" style="width:28px;height:40px;font-size:14px"></div><div class="tv-card hidden" style="width:28px;height:40px;font-size:14px"></div>' : ''}
-                </div>
-              `}
-            </div>
-          `;
-        }).join('')}
-      </div>
-    </div>
-  `;
-
-  if (state.phase === 'result' && state.winner) showConfetti();
 }
 
 // ── TV HORSE RACING ─────────────────────────────────────────────────────

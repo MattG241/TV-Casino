@@ -1,4 +1,4 @@
-// ── TV Casino Mobile App ────────────────────────────────────────────────
+// ── Race Day Mobile App ─────────────────────────────────────────────────
 
 const socket = io();
 
@@ -11,14 +11,8 @@ let roomCode = '';
 let selectedAvatar = 0;
 let currentGame = null;
 let players = [];
-let myVote = null;
 
 const AVATARS = ['😎', '🤠', '👑', '🎩', '🦊', '🐺', '🦁', '🐲', '💀', '🤖', '👽', '🎭'];
-const SUIT_SYMBOLS = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
-const SLOT_SYMBOLS = {
-  cherry: '🍒', lemon: '🍋', orange: '🍊', plum: '🍇',
-  bell: '🔔', bar: '📊', seven: '7️⃣', diamond: '💎', wild: '⭐'
-};
 
 // ── Init ────────────────────────────────────────────────────────────────
 
@@ -163,7 +157,7 @@ socket.on('players:update', (data) => {
   if (me) {
     myChips = me.chips;
     // Update chips on all screens
-    document.querySelectorAll('#myChips, #voteChips, #gameChips').forEach(el => {
+    document.querySelectorAll('#myChips, #gameChips').forEach(el => {
       el.textContent = myChips.toLocaleString();
     });
   }
@@ -187,70 +181,24 @@ function everyonesIn() {
   socket.emit('lobby:ready');
 }
 
-socket.on('lobby:vote-start', () => {
-  showScreen('voteScreen');
-  document.getElementById('voteRoomCode').textContent = roomCode;
-  myVote = null;
-  // Reset vote cards
-  document.querySelectorAll('.vote-card').forEach(c => {
-    c.classList.remove('voted', 'winner');
-  });
-});
-
-// ── Game Voting ─────────────────────────────────────────────────────────
-
-function voteForGame(game) {
-  if (myVote) return; // already voted
-  myVote = game;
-  socket.emit('game:vote', { game });
-  showToast(`Voted for ${game}!`);
-  // Highlight voted card
-  document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('voted'));
-  const card = document.querySelector(`#vote-${game}`)?.closest('.vote-card');
-  if (card) card.classList.add('voted');
-}
-
-socket.on('vote:update', ({ votes, timer }) => {
-  // Update vote counts
-  for (const [game, count] of Object.entries(votes)) {
-    const el = document.getElementById(`vote-${game}`);
-    if (el) el.textContent = count;
-  }
-  // Update timer
-  if (timer !== undefined && timer !== null) {
-    const fill = document.getElementById('voteTimerFill');
-    const text = document.getElementById('voteTimerText');
-    if (fill) fill.style.width = `${(timer / 30) * 100}%`;
-    if (text) text.textContent = timer > 0 ? `${timer}s remaining` : "Time's up!";
-  }
-});
-
-socket.on('vote:winner', ({ game }) => {
-  // Highlight winning game
-  document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('winner'));
-  const el = document.getElementById(`vote-${game}`);
-  if (el) el.closest('.vote-card').classList.add('winner');
-  showToast(`${game.charAt(0).toUpperCase() + game.slice(1)} wins!`);
-});
-
 // ── Game Events ─────────────────────────────────────────────────────────
 
 socket.on('game:started', ({ game }) => {
   currentGame = game;
-  showGameUI(game);
+  showGameUI();
 });
 
-function showGameUI(game) {
+function showGameUI() {
   showScreen('gameScreen');
   document.getElementById('gameRoomCode').textContent = roomCode;
   document.querySelectorAll('.game-view').forEach(v => v.classList.remove('active'));
-  const view = document.getElementById(game + 'Game');
+  const view = document.getElementById('horseracingGame');
   if (view) view.classList.add('active');
   // Reset end game button state
   const endBtn = document.getElementById('endGameBtn');
   if (endBtn) {
     endBtn.classList.remove('requested');
-    endBtn.textContent = 'END GAME';
+    endBtn.textContent = 'NEW MEETING';
   }
   const endStatus = document.getElementById('endGameStatus');
   if (endStatus) endStatus.textContent = '';
@@ -274,36 +222,14 @@ function requestEndGame() {
 socket.on('lobby:ready-update', ({ readyCount, totalCount }) => {
   const el = document.getElementById('endGameStatus');
   if (el) {
-    el.textContent = `${readyCount}/${totalCount} ready to move on`;
+    el.textContent = `${readyCount}/${totalCount} ready for new meeting`;
   }
-});
-
-// lobby:vote-start can come from "everyone's in" OR from all players ending the game
-socket.on('lobby:vote-start', () => {
-  currentGame = null;
-  myVote = null;
-  endGameRequested = false;
-  showScreen('voteScreen');
-  document.getElementById('voteRoomCode').textContent = roomCode;
-  document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('voted', 'winner'));
-  ['roulette', 'slots', 'blackjack', 'poker', 'horseracing'].forEach(g => {
-    const el = document.getElementById(`vote-${g}`);
-    if (el) el.textContent = '0';
-  });
-  const fill = document.getElementById('voteTimerFill');
-  const text = document.getElementById('voteTimerText');
-  if (fill) fill.style.width = '100%';
-  if (text) text.textContent = '';
 });
 
 // ── Game State Handler ──────────────────────────────────────────────────
 
 socket.on('game:state', ({ game, state }) => {
-  if (game === 'roulette') renderRoulette(state);
-  else if (game === 'slots') renderSlots(state);
-  else if (game === 'blackjack') renderBlackjack(state);
-  else if (game === 'poker') renderPoker(state);
-  else if (game === 'horseracing') renderHorseRacing(state);
+  if (game === 'horseracing') renderHorseRacing(state);
 });
 
 socket.on('game:timer', ({ timer }) => {
@@ -311,500 +237,12 @@ socket.on('game:timer', ({ timer }) => {
   if (el) el.textContent = timer > 0 ? `${timer}s remaining` : "Time's up!";
   const fill = document.querySelector('.timer-fill');
   if (fill) {
-    const maxTime = currentGame === 'roulette' ? 20 : currentGame === 'horseracing' ? 25 : 15;
-    fill.style.width = `${(timer / maxTime) * 100}%`;
+    fill.style.width = `${(timer / 25) * 100}%`;
   }
 });
 
 socket.on('game:error', ({ message }) => showToast(message));
 
-// ── ROULETTE RENDERER ───────────────────────────────────────────────────
-
-let rouletteBetAmount = 10;
-let rouletteSelectedBet = null;
-
-const RED_NUMBERS = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
-
-function renderRoulette(state) {
-  const el = document.getElementById('rouletteContent');
-
-  if (state.phase === 'betting') {
-    el.innerHTML = `
-      <div class="timer-bar"><div class="timer-fill" style="width:${(state.timer/20)*100}%"></div></div>
-      <div class="timer-text">${state.timer}s remaining</div>
-
-      <div class="bet-amount-selector">
-        ${[5,10,25,50,100].map(v => `
-          <button class="chip-btn chip-${v} ${rouletteBetAmount === v ? 'selected' : ''}"
-            onclick="rouletteBetAmount=${v}; renderRoulette(window._rouletteState)">${v}</button>
-        `).join('')}
-      </div>
-
-      <div class="bet-options">
-        <button class="bet-btn color-red ${rouletteSelectedBet === 'red' ? 'selected' : ''}"
-          onclick="placeRouletteBet('color','red')">RED</button>
-        <button class="bet-btn color-green"
-          onclick="placeRouletteBet('number', 0)">0</button>
-        <button class="bet-btn color-black ${rouletteSelectedBet === 'black' ? 'selected' : ''}"
-          onclick="placeRouletteBet('color','black')">BLACK</button>
-        <button class="bet-btn" onclick="placeRouletteBet('odd')">ODD</button>
-        <button class="bet-btn" onclick="placeRouletteBet('even')">EVEN</button>
-        <button class="bet-btn" onclick="placeRouletteBet('1-18')">1-18</button>
-        <button class="bet-btn" onclick="placeRouletteBet('19-36')">19-36</button>
-        <button class="bet-btn" onclick="placeRouletteBet('1st12')">1st 12</button>
-        <button class="bet-btn" onclick="placeRouletteBet('2nd12')">2nd 12</button>
-        <button class="bet-btn" onclick="placeRouletteBet('3rd12')">3rd 12</button>
-      </div>
-
-      <div class="number-grid">
-        ${Array.from({length:37}, (_,i) => {
-          const color = i === 0 ? 'green' : RED_NUMBERS.includes(i) ? 'red' : 'black';
-          return `<button class="num-btn ${color}" onclick="placeRouletteBet('number',${i})">${i}</button>`;
-        }).join('')}
-      </div>
-
-      ${state.bets[myId] ? `
-        <div class="status-msg success">
-          You have ${state.bets[myId].length} bet(s) placed
-        </div>` : ''}
-
-      ${renderRouletteHistory(state.history)}
-    `;
-  } else if (state.phase === 'spinning') {
-    el.innerHTML = `
-      <div style="text-align:center;padding:40px">
-        <div style="font-size:48px;animation:spin 0.5s linear infinite">🎡</div>
-        <div style="font-size:20px;margin-top:16px;color:var(--gold)">Spinning...</div>
-      </div>
-    `;
-    // Fallback: if stuck on spinning for 7s, request fresh state from server
-    clearTimeout(window._spinTimeout);
-    window._spinTimeout = setTimeout(() => {
-      socket.emit('game:request-state');
-    }, 7000);
-  } else if (state.phase === 'result' && state.result) {
-    clearTimeout(window._spinTimeout);
-    const myBets = state.bets[myId] || [];
-    const totalWin = myBets.reduce((s, b) => s + (b.winAmount || 0), 0);
-    el.innerHTML = `
-      <div class="roulette-result">
-        <div style="font-size:14px;color:var(--text-dim)">Result</div>
-        <div class="result-number ${state.result.color}">${state.result.number}</div>
-        <div style="font-size:16px;text-transform:uppercase;color:var(--text-dim)">${state.result.color}</div>
-        ${totalWin > 0 ? `<div class="win-display">You won $${totalWin}!</div>` :
-          myBets.length > 0 ? `<div style="color:var(--red);font-size:18px;margin-top:8px">Better luck next time</div>` : ''}
-      </div>
-      ${renderRouletteHistory(state.history)}
-    `;
-  }
-  window._rouletteState = state;
-}
-
-function renderRouletteHistory(history) {
-  if (!history || history.length === 0) return '';
-  return `<div class="history-strip">${history.map(h =>
-    `<div class="history-num ${h.color}">${h.number}</div>`
-  ).join('')}</div>`;
-}
-
-let _lastBetTime = 0;
-function placeRouletteBet(type, value) {
-  // Throttle: min 300ms between bets
-  const now = Date.now();
-  if (now - _lastBetTime < 300) return;
-  _lastBetTime = now;
-  socket.emit('roulette:bet', { type, value, amount: rouletteBetAmount });
-  rouletteSelectedBet = type === 'color' ? value : type;
-  showToast(`Bet $${rouletteBetAmount} on ${value !== undefined ? value : type}`);
-}
-
-// ── SLOTS RENDERER ──────────────────────────────────────────────────────
-
-const SLOT_SYMBOL_NAMES = { cherry:'🍒', lemon:'🍋', orange:'🍊', plum:'🍇', bell:'🔔', bar:'📊', seven:'7️⃣', diamond:'💎', wild:'⭐' };
-let slotsBetAmount = 10;
-let slotsHasBet = false;
-
-function renderSlots(state) {
-  const el = document.getElementById('slotsContent');
-  const myResult = state.results?.[myId];
-  const myBet = state.bets?.[myId];
-  const phase = state.phase || 'betting';
-  const freeSpins = state.freeSpins?.[myId] || 0;
-  const jackpot = state.jackpot || 500;
-
-  // Reels display
-  let reelsHTML = '';
-  if (myResult && (phase === 'results' || myResult.isFreeSpin)) {
-    const winLines = (myResult.paylines || []).map(p => p.lineIdx);
-    reelsHTML = myResult.reels.map((reel, ri) => `
-      <div class="slot-reel ${phase === 'spinning' ? 'spinning' : ''}">
-        ${reel.map((sym, si) => {
-          const isWinning = winLines.some(li => {
-            const lines = [[0,1],[1,1],[2,1],[0,0],[1,0],[2,0],[0,2],[1,2],[2,2],[0,0],[1,1],[2,2],[0,2],[1,1],[2,0]];
-            // Check payline definitions
-            const PAYLINES = [[[0,1],[1,1],[2,1]],[[0,0],[1,0],[2,0]],[[0,2],[1,2],[2,2]],[[0,0],[1,1],[2,2]],[[0,2],[1,1],[2,0]]];
-            if (li < PAYLINES.length) return PAYLINES[li].some(([r,s]) => r === ri && s === si);
-            return false;
-          });
-          return `<div class="slot-symbol ${si === 1 ? 'middle' : ''} ${isWinning ? 'winner' : ''}">${SLOT_SYMBOL_NAMES[sym] || sym}</div>`;
-        }).join('')}
-      </div>
-    `).join('');
-  } else if (phase === 'spinning') {
-    reelsHTML = [0,1,2].map(() => `
-      <div class="slot-reel spinning">
-        <div class="slot-symbol">🍒</div>
-        <div class="slot-symbol middle">⭐</div>
-        <div class="slot-symbol">💎</div>
-      </div>
-    `).join('');
-  } else {
-    reelsHTML = [0,1,2].map(() => `
-      <div class="slot-reel">
-        <div class="slot-symbol">🍒</div>
-        <div class="slot-symbol middle">❓</div>
-        <div class="slot-symbol">🍋</div>
-      </div>
-    `).join('');
-  }
-
-  // Other players' results
-  const otherResults = Object.entries(state.results || {}).filter(([pid]) => pid !== myId);
-  const otherResultsHTML = otherResults.length > 0 && phase === 'results' ? `
-    <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px">
-      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Other Players</div>
-      ${otherResults.map(([pid, r]) => {
-        const p = players.find(pl => pl.id === pid);
-        return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">
-          <span>${p?.name || 'Player'}</span>
-          <span style="color:${r.totalWin > 0 ? 'var(--green)' : 'var(--text-dim)'}">${r.totalWin > 0 ? '+$' + r.totalWin : 'No win'}</span>
-        </div>`;
-      }).join('')}
-    </div>
-  ` : '';
-
-  // Leaderboard
-  const lb = Object.entries(state.leaderboard || {}).sort((a,b) => b[1] - a[1]).slice(0, 5);
-  const leaderboardHTML = lb.length > 0 ? `
-    <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.06);padding-top:8px">
-      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Session Leaderboard</div>
-      ${lb.map(([pid, net], i) => {
-        const p = players.find(pl => pl.id === pid);
-        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
-        return `<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:12px">
-          <span>${medal} ${p?.name || 'Player'}${pid === myId ? ' (You)' : ''}</span>
-          <span style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">$${net >= 0 ? '+' : ''}${net}</span>
-        </div>`;
-      }).join('')}
-    </div>
-  ` : '';
-
-  el.innerHTML = `
-    <div class="slots-machine">
-      <div style="font-size:20px;font-weight:800;color:var(--gold);text-align:center;margin-bottom:4px">
-        LUCKY SLOTS
-      </div>
-      <div style="text-align:center;font-size:12px;color:var(--text-dim);margin-bottom:10px">
-        Round ${state.roundNumber || 1} • 5 Paylines • Wilds ⭐
-      </div>
-
-      <!-- Progressive Jackpot -->
-      <div style="text-align:center;background:linear-gradient(135deg,rgba(212,168,67,0.15),rgba(212,168,67,0.05));
-                  border:1px solid rgba(212,168,67,0.3);border-radius:8px;padding:6px 12px;margin-bottom:10px">
-        <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:2px">Progressive Jackpot</div>
-        <div style="font-size:22px;font-weight:900;color:var(--gold)">$${jackpot.toLocaleString()}</div>
-        <div style="font-size:9px;color:var(--text-dim)">3x 💎 on middle line wins jackpot</div>
-      </div>
-
-      <div class="slots-display">${reelsHTML}</div>
-
-      ${myResult && phase === 'results' ? `
-        ${myResult.jackpotWin ? `
-          <div class="win-display" style="font-size:28px;color:#ff0">🎰 JACKPOT! $${myResult.jackpotAmount}! 🎰</div>
-        ` : ''}
-        ${myResult.totalWin > 0 ? `
-          <div class="win-display">WIN! $${myResult.totalWin}${myResult.paylines?.length > 1 ? ' (' + myResult.paylines.length + ' lines!)' : ''}</div>
-          ${myResult.paylines?.map(pl => `
-            <div style="text-align:center;font-size:11px;color:var(--green)">
-              Line ${pl.lineIdx + 1}: ${pl.symbols.map(s => SLOT_SYMBOL_NAMES[s]).join(' ')} → ${pl.multiplier}x ($${pl.win})
-            </div>
-          `).join('')}
-        ` : `
-          <div style="text-align:center;color:var(--text-dim);margin-top:12px">No win this round</div>
-        `}
-        ${myResult.freeSpinsWon > 0 ? `
-          <div style="text-align:center;color:var(--gold);font-weight:700;margin-top:6px">🎁 Won ${myResult.freeSpinsWon} FREE SPINS!</div>
-        ` : ''}
-      ` : phase === 'spinning' ? `
-        <div style="text-align:center;color:var(--gold);margin-top:12px;font-weight:700" class="animate-pulse">
-          Spinning...
-        </div>
-      ` : ''}
-
-      ${otherResultsHTML}
-      ${leaderboardHTML}
-    </div>
-
-    ${phase === 'betting' ? `
-      <div class="bet-controls">
-        ${freeSpins > 0 ? `
-          <button class="btn btn-purple btn-block" onclick="socket.emit('slots:free-spin')" style="margin-bottom:8px">
-            🎁 USE FREE SPIN (${freeSpins} left)
-          </button>
-        ` : ''}
-        <div class="bet-label">Bet Amount ${myBet ? '(Bet placed!)' : ''}</div>
-        <div class="bet-amount-display">$${slotsBetAmount}</div>
-        <div class="quick-amounts">
-          ${[5,10,25,50,100].map(v => `
-            <button class="chip-btn chip-${v} ${slotsBetAmount === v ? 'selected' : ''}"
-              onclick="slotsBetAmount=${v}; renderSlots(window._slotsState)">${v}</button>
-          `).join('')}
-        </div>
-        <button class="btn btn-gold btn-block slots-lever" onclick="spinSlots()" ${myBet ? 'style="opacity:0.5"' : ''}>
-          ${myBet ? 'WAITING FOR OTHERS...' : 'PLACE BET & SPIN!'}
-        </button>
-        <div style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:6px">
-          ${Object.keys(state.bets || {}).length} / ${players.length} players ready
-          ${state.timer ? ' • ' + state.timer + 's' : ''}
-        </div>
-      </div>
-    ` : phase === 'results' ? `
-      <div style="text-align:center;color:var(--text-dim);font-size:13px;margin-top:12px">
-        Next round starting soon...
-      </div>
-    ` : ''}
-  `;
-  window._slotsState = state;
-}
-
-function spinSlots() {
-  socket.emit('slots:bet', { amount: slotsBetAmount });
-}
-
-// ── BLACKJACK RENDERER ──────────────────────────────────────────────────
-
-let bjBetAmount = 25;
-
-function renderBlackjack(state) {
-  const el = document.getElementById('blackjackContent');
-
-  if (state.phase === 'betting') {
-    const hasBet = state.bets && state.bets[myId];
-    el.innerHTML = `
-      <div class="bj-table">
-        <div style="text-align:center;font-size:20px;font-weight:700;color:var(--gold)">BLACKJACK</div>
-        <div style="text-align:center;color:rgba(255,255,255,0.6);margin-top:8px">Place your bet</div>
-      </div>
-      ${!hasBet ? `
-        <div class="bet-controls">
-          <div class="bet-amount-display">$${bjBetAmount}</div>
-          <div class="quick-amounts">
-            ${[10,25,50,100,250].map(v => `
-              <button class="chip-btn chip-${Math.min(v,100)} ${bjBetAmount === v ? 'selected' : ''}"
-                onclick="bjBetAmount=${v}; renderBlackjack(window._bjState)">${v}</button>
-            `).join('')}
-          </div>
-          <button class="btn btn-gold btn-block" onclick="placeBJBet()">DEAL ME IN</button>
-        </div>
-      ` : `
-        <div class="status-msg waiting">Waiting for other players to bet...</div>
-      `}
-    `;
-  } else {
-    const myHand = state.hands?.[myId] || [];
-    const dealerHand = state.dealerHand || [];
-    const isMyTurn = state.turnOrder && state.turnOrder[state.currentTurn] === myId;
-    const myResult = state.results?.[myId];
-    const myVal = handValueClient(myHand);
-    const dealerVal = dealerHand.every(c => c.rank !== 'hidden') ? handValueClient(dealerHand) : '?';
-
-    el.innerHTML = `
-      <div class="bj-table">
-        <div class="hand-area">
-          <div class="hand-label">Dealer ${dealerVal !== '?' ? `(${dealerVal})` : ''}</div>
-          <div class="cards-row">${dealerHand.map(c => renderCard(c)).join('')}</div>
-        </div>
-
-        <div style="border-top:1px solid rgba(255,255,255,0.1);margin:12px 0"></div>
-
-        <div class="hand-area">
-          <div class="hand-label">Your Hand (${myVal})</div>
-          <div class="cards-row">${myHand.map(c => renderCard(c)).join('')}</div>
-          ${myResult ? `
-            <div class="bj-result ${myResult.includes('win') || myResult === 'blackjack_win' ? 'win' :
-              myResult === 'push' ? 'push' : 'lose'}">
-              ${myResult === 'blackjack_win' ? 'BLACKJACK!' :
-                myResult === 'win' ? 'YOU WIN!' :
-                myResult === 'bust' ? 'BUST!' :
-                myResult === 'push' ? 'PUSH' :
-                myResult === 'lose' ? 'DEALER WINS' : myResult.toUpperCase()}
-            </div>
-          ` : ''}
-        </div>
-
-        ${isMyTurn && !myResult ? `
-          <div class="bj-actions">
-            <button class="btn btn-green" onclick="socket.emit('blackjack:hit')" style="flex:1">HIT</button>
-            <button class="btn btn-red" onclick="socket.emit('blackjack:stand')" style="flex:1">STAND</button>
-            ${myHand.length === 2 ? `
-              <button class="btn btn-purple" onclick="socket.emit('blackjack:double')" style="flex:1">DOUBLE</button>
-            ` : ''}
-          </div>
-        ` : !myResult ? `
-          <div class="status-msg waiting">
-            ${state.phase === 'dealer' ? 'Dealer is playing...' : 'Waiting for your turn...'}
-          </div>
-        ` : ''}
-      </div>
-    `;
-  }
-  window._bjState = state;
-}
-
-function placeBJBet() {
-  socket.emit('blackjack:bet', { amount: bjBetAmount });
-}
-
-function handValueClient(hand) {
-  let total = 0, aces = 0;
-  for (const c of hand) {
-    if (c.rank === 'hidden') continue;
-    if (['J','Q','K'].includes(c.rank)) total += 10;
-    else if (c.rank === 'A') { total += 11; aces++; }
-    else total += parseInt(c.rank);
-  }
-  while (total > 21 && aces > 0) { total -= 10; aces--; }
-  return total;
-}
-
-function renderCard(card) {
-  if (card.rank === 'hidden') return '<div class="card hidden"></div>';
-  const suit = SUIT_SYMBOLS[card.suit] || '';
-  return `<div class="card ${card.suit}">
-    <span class="card-rank">${card.rank}</span>
-    <span class="card-suit">${suit}</span>
-  </div>`;
-}
-
-// ── POKER RENDERER ──────────────────────────────────────────────────────
-
-let pokerRaiseAmount = 40;
-
-function renderPoker(state) {
-  const el = document.getElementById('pokerContent');
-  const myHand = state.myHand || [];
-  const community = state.community || [];
-  const isMyTurn = state.turnOrder && state.turnOrder[state.currentTurn] === myId;
-  const isFolded = state.foldedPlayers?.includes(myId);
-  const myRoundBet = state.roundBets?.[myId] || 0;
-  const toCall = (state.currentBet || 0) - myRoundBet;
-  const isResult = state.phase === 'result' || state.phase === 'showdown';
-  const bigBlind = state.bigBlind || 20;
-  const minRaise = (state.currentBet || 0) + bigBlind;
-  const maxRaise = myChips + myRoundBet;
-
-  // Build opponent info section
-  const opponents = (state.turnOrder || [])
-    .filter(pid => pid !== myId)
-    .map(pid => {
-      const p = players.find(pl => pl.id === pid);
-      const isTurn = state.currentTurn === state.turnOrder.indexOf(pid);
-      const folded = state.foldedPlayers?.includes(pid);
-      const isWinner = state.winner === pid;
-      const opHand = isResult && state.allHands?.[pid];
-      const handResult = isResult && state.handResults?.[pid];
-      const roundBet = state.roundBets?.[pid] || 0;
-      const aiTag = p?.isAI ? ' <span style="color:var(--text-dim);font-size:10px">[AI]</span>' : '';
-      return `
-        <div class="poker-opponent ${isTurn ? 'active-turn' : ''} ${folded ? 'folded' : ''} ${isWinner ? 'winner' : ''}"
-             style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;
-                    ${isTurn ? 'background:rgba(255,215,0,0.15);border:1px solid rgba(255,215,0,0.3)' : 'background:rgba(255,255,255,0.03)'}">
-          <span style="font-size:20px">${AVATARS[p?.avatar] || '😎'}</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-              ${p?.name || 'Player'}${aiTag}
-            </div>
-            <div style="font-size:11px;color:var(--gold)">$${p?.chips?.toLocaleString() || 0}${roundBet > 0 ? ` <span style="color:var(--green)">(bet $${roundBet})</span>` : ''}</div>
-          </div>
-          ${folded ? '<span style="color:var(--red);font-size:11px;font-weight:700">FOLDED</span>' : ''}
-          ${isWinner ? '<span style="color:var(--green);font-size:11px;font-weight:700">WINNER</span>' : ''}
-          ${opHand && Array.isArray(opHand) ? `
-            <div style="display:flex;gap:2px">${opHand.map(c => renderCard(c)).join('')}</div>
-            ${handResult ? `<span style="font-size:10px;color:var(--gold)">${handResult.name}</span>` : ''}
-          ` : ''}
-        </div>`;
-    }).join('');
-
-  el.innerHTML = `
-    <div class="poker-table">
-      <div class="pot-display">Pot: $${state.pot || 0}</div>
-
-      ${opponents ? `
-        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px">${opponents}</div>
-      ` : ''}
-
-      <div class="hand-label" style="text-align:center">Community Cards</div>
-      <div class="community-cards">
-        ${community.length > 0 ? community.map(c => renderCard(c)).join('') :
-          '<div style="color:rgba(255,255,255,0.3);font-size:14px;padding:20px">Waiting for flop...</div>'}
-      </div>
-
-      <div style="border-top:1px solid rgba(255,255,255,0.1);margin:16px 0"></div>
-
-      <div class="hand-label">Your Hand</div>
-      <div class="cards-row" style="justify-content:center">
-        ${myHand.length > 0 ? myHand.map(c => renderCard(c)).join('') :
-          '<div style="color:rgba(255,255,255,0.3)">No cards yet</div>'}
-      </div>
-      ${isResult && state.handResults?.[myId] ? `
-        <div style="text-align:center;font-size:12px;color:var(--gold);margin-top:4px">${state.handResults[myId].name}</div>
-      ` : ''}
-
-      ${isResult ? `
-        <div class="bj-result ${state.winner === myId ? 'win' : 'lose'}">
-          ${state.winner === myId ? `YOU WIN $${state.pot}!` :
-            `${players.find(p => p.id === state.winner)?.name || 'Opponent'} wins${state.handResults?.[state.winner] ? ' with ' + state.handResults[state.winner].name : ''}`}
-        </div>
-      ` : isFolded ? `
-        <div class="status-msg" style="background:rgba(255,255,255,0.05);color:var(--text-dim)">You folded</div>
-      ` : isMyTurn ? `
-        <div style="text-align:center;color:var(--gold);font-weight:700;margin:8px 0">YOUR TURN</div>
-        <div class="poker-actions">
-          <button class="btn btn-red btn-sm" onclick="pokerAction('fold')">FOLD</button>
-          ${toCall > 0 ? `
-            <button class="btn btn-green btn-sm" onclick="pokerAction('call')">CALL $${toCall}</button>
-          ` : `
-            <button class="btn btn-green btn-sm" onclick="pokerAction('check')">CHECK</button>
-          `}
-          ${maxRaise > minRaise ? `
-            <button class="btn btn-gold btn-sm" onclick="pokerAction('raise', pokerRaiseAmount)">RAISE $${pokerRaiseAmount}</button>
-          ` : ''}
-          <button class="btn btn-purple btn-sm" onclick="pokerAction('allin')">ALL IN</button>
-        </div>
-        ${maxRaise > minRaise ? `
-          <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-            <span style="font-size:12px;color:var(--text-dim)">$${minRaise}</span>
-            <input type="range" class="raise-slider" min="${minRaise}" max="${maxRaise}"
-              value="${pokerRaiseAmount}" oninput="pokerRaiseAmount=parseInt(this.value);this.nextElementSibling.textContent='$'+this.value">
-            <span style="font-size:12px;color:var(--text-dim)">$${pokerRaiseAmount}</span>
-          </div>
-        ` : ''}
-      ` : `
-        <div class="status-msg waiting">
-          ${state.phase} - Waiting for ${players.find(p => p.id === state.turnOrder?.[state.currentTurn])?.name || 'other player'}...
-        </div>
-      `}
-    </div>
-
-    <div style="font-size:12px;color:var(--text-dim);text-align:center;margin-top:8px">
-      Phase: ${state.phase} | Players: ${state.activePlayers?.length || 0} active
-    </div>
-  `;
-}
-
-function pokerAction(action, amount) {
-  socket.emit('poker:action', { action, amount });
-}
 
 // ── HORSE RACING RENDERER ───────────────────────────────────────────────
 

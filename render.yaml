@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: tv-casino
+    name: race-day
     runtime: node
     plan: free
     buildCommand: npm install
