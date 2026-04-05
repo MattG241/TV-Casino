@@ -2187,6 +2187,8 @@ function startBettingTimer(room, seconds) {
 io.on('connection', (socket) => {
   let currentRoom = null;
   let playerId = null;
+  console.log(`[CONNECT] socket=${socket.id} transport=${socket.conn.transport.name}`);
+  socket.on('disconnect', (reason) => console.log(`[DISCONNECT] socket=${socket.id} reason=${reason}`));
 
   socket.on('room:create', (data) => {
     if (!data || typeof data !== 'object') return;
@@ -2255,6 +2257,7 @@ io.on('connection', (socket) => {
     room.tvSocket = socket;
     room.tvHostSocket = socket; // TV is the host for game selection
     currentRoom = room;
+    console.log(`[TV] Room created: ${room.code} (socket: ${socket.id})`);
     socket.emit('tv:created', { code: room.code, players: playerList(room) });
   });
 

@@ -1,6 +1,6 @@
 // ── TV Casino - TV Display ──────────────────────────────────────────────
 
-const socket = io();
+const socket = io({ transports: ['websocket', 'polling'] });
 
 const AVATARS = ['😎', '🤠', '👑', '🎩', '🦊', '🐺', '🦁', '🐲', '💀', '🤖', '👽', '🎭'];
 
@@ -12,6 +12,23 @@ let floatingPositions = {};
 let floatAnimFrameId = null;
 // Map of playerId → selfie dataUrl (populated from players:update)
 let playerSelfies = {};
+
+// ── Debug panel ─────────────────────────────────────────────────────────
+const _dbgLines = [];
+function dbg(msg) {
+  const t = new Date().toISOString().substr(11, 8);
+  _dbgLines.unshift(`[${t}] ${msg}`);
+  if (_dbgLines.length > 6) _dbgLines.pop();
+  const el = document.getElementById('tvDbgStatus');
+  if (el) el.innerHTML = _dbgLines.join('<br>');
+  console.log('[TV]', msg);
+}
+
+socket.on('connect', () => dbg(`✅ Socket connected: ${socket.id} (transport: ${socket.io.engine.transport.name})`));
+socket.on('disconnect', (reason) => dbg(`❌ Socket disconnected: ${reason}`));
+socket.on('connect_error', (err) => dbg(`🔴 Connect error: ${err.message}`));
+socket.io.on('reconnect', (n) => dbg(`🔁 Reconnected after ${n} attempts`));
+socket.io.on('reconnect_attempt', (n) => dbg(`🔄 Reconnect attempt #${n}`));
 
 // Fullscreen disabled — Smart TVs don't support the Fullscreen API
 
@@ -27,8 +44,14 @@ if (soundBtn) {
 // ── Init: TV creates the room ───────────────────────────────────────────
 
 function init() {
+  dbg('📡 Sending tv:create...');
   socket.emit('tv:create');
 }
+
+// Wait until connected before creating the room
+socket.on('connect', () => {
+  if (!roomCode) init();
+});
 
 function getBaseUrl() {
   return `${window.location.protocol}//${window.location.host}`;
@@ -50,9 +73,6 @@ function showJoinInfo() {
     QRCode.render(canvas, joinUrl);
   }
 }
-
-
-init();
 
 // ── Floating Players ────────────────────────────────────────────────────
 
@@ -149,6 +169,7 @@ function animateFloating() {
 socket.on('tv:created', (data) => {
   roomCode = data.code;
   players = data.players;
+  dbg(`🏠 Room created: ${roomCode}`);
   showJoinInfo();
 });
 

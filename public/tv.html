@@ -48,6 +48,11 @@
 
   <div class="confetti-container" id="confetti"></div>
 
+  <!-- Debug overlay — shows socket/room status, tap to dismiss -->
+  <div id="tvDebug" style="position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.85);color:#0f0;font:12px monospace;padding:8px 12px;z-index:9999;max-height:120px;overflow:hidden;cursor:pointer" onclick="this.style.display='none'">
+    <div id="tvDbgStatus">⏳ Connecting to server...</div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/three.min.js"></script>
   <script src="/js/GLTFLoader.js"></script>
