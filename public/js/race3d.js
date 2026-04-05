@@ -13,6 +13,10 @@ const Race3D = (() => {
   let horseAnimClip = null;
   let modelReady = false;
 
+  // Loaded jockey template
+  let jockeyTemplate = null;
+  let jockeyReady = false;
+
   // Cache latest state so the render loop can drive parade animation
   let lastHorsesData = [];
   let lastPhase = null;
@@ -253,6 +257,107 @@ const Race3D = (() => {
     });
   }
 
+  function loadJockeyModel() {
+    return new Promise((resolve) => {
+      if (typeof THREE.GLTFLoader === 'undefined') { resolve(false); return; }
+      const loader = new THREE.GLTFLoader();
+      loader.load('/models/Humanoid.glb', (gltf) => {
+        jockeyTemplate = gltf.scene;
+        jockeyReady = true;
+        console.log('[Race3D] Jockey model loaded');
+        resolve(true);
+      }, undefined, (err) => {
+        console.warn('Jockey model load failed:', err);
+        resolve(false);
+      });
+    });
+  }
+
+  // Create a jockey mesh (GLB or fallback) with optional selfie face
+  function createJockey(silkColor, selfieUrl) {
+    const group = new THREE.Group();
+    const col = new THREE.Color(silkColor);
+
+    if (jockeyReady && jockeyTemplate) {
+      const model = jockeyTemplate.clone();
+      // Scale the humanoid to sit on the horse (~0.8 units tall sitting)
+      model.scale.set(0.012, 0.012, 0.012);
+      model.rotation.y = Math.PI / 2; // face forward
+
+      // Create selfie face texture if available
+      let faceTex = null;
+      if (selfieUrl) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = selfieUrl;
+        faceTex = new THREE.Texture(img);
+        img.onload = () => { faceTex.needsUpdate = true; };
+      }
+
+      // Apply silk colors and selfie to the model
+      let headMesh = null;
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.material = new THREE.MeshLambertMaterial({ color: col.clone() });
+          child.castShadow = true;
+
+          // Try to identify the head mesh (usually highest positioned or named 'head')
+          const box = new THREE.Box3().setFromObject(child);
+          if (!headMesh || box.max.y > new THREE.Box3().setFromObject(headMesh).max.y) {
+            headMesh = child;
+          }
+        }
+      });
+
+      // Apply selfie texture to the head mesh
+      if (headMesh && faceTex) {
+        headMesh.material = new THREE.MeshBasicMaterial({ map: faceTex });
+      } else if (headMesh) {
+        // Skin color for head
+        headMesh.material = new THREE.MeshLambertMaterial({ color: 0xf5c9a0 });
+      }
+
+      group.add(model);
+    } else {
+      // Fallback: simple jockey shapes
+      const jCol = col.clone().offsetHSL(0.15, 0.2, 0.1);
+      const jBody = new THREE.Mesh(
+        new THREE.SphereGeometry(0.2, 8, 6),
+        new THREE.MeshLambertMaterial({ color: jCol })
+      );
+      jBody.scale.set(0.8, 1.2, 0.7);
+      jBody.position.set(0, 0.7, 0);
+      group.add(jBody);
+
+      // Head with selfie texture or skin color
+      let headMat;
+      if (selfieUrl) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = selfieUrl;
+        const tex = new THREE.Texture(img);
+        img.onload = () => { tex.needsUpdate = true; };
+        headMat = new THREE.MeshBasicMaterial({ map: tex });
+      } else {
+        headMat = new THREE.MeshLambertMaterial({ color: 0xf5c9a0 });
+      }
+      const jHead = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), headMat);
+      jHead.position.set(0.05, 1.0, 0);
+      group.add(jHead);
+
+      // Helmet
+      const helmet = new THREE.Mesh(
+        new THREE.SphereGeometry(0.15, 8, 8),
+        new THREE.MeshLambertMaterial({ color: jCol })
+      );
+      helmet.scale.set(1, 0.6, 1);
+      helmet.position.set(0.02, 1.12, 0);
+      group.add(helmet);
+    }
+
+    return group;
+  }
+
   async function init(containerEl) {
     if (initialized) dispose();
     container = containerEl;
@@ -388,8 +493,9 @@ const Race3D = (() => {
     // Init dust particles
     initDust();
 
-    // Load GLB model async — will upgrade horses once ready
+    // Load GLB models async — will upgrade horses once ready
     loadHorseModel();
+    loadJockeyModel();
   }
 
   function addRail(laneOffset) {
@@ -413,11 +519,12 @@ const Race3D = (() => {
   }
 
   // ── Create horse from GLB or fallback geometry ─────────────────────────
-  function createHorse(color, laneIndex, totalLanes) {
+  function createHorse(color, laneIndex, totalLanes, horseData) {
     const group = new THREE.Group();
     const col = new THREE.Color(color);
     let mixer = null;
     let action = null;
+    const selfieUrl = horseData?.ownerSelfie || null;
 
     if (modelReady && horseTemplate) {
       // Clone the loaded GLB horse
@@ -443,6 +550,13 @@ const Race3D = (() => {
 
       group.add(model);
       group._model = model;
+
+      // Mount jockey on GLB horse
+      const jockey = createJockey(color, selfieUrl);
+      jockey.position.set(-1, 3.5, 0); // riding position on GLB horse
+      jockey.scale.set(1.2, 1.2, 1.2);
+      group.add(jockey);
+      group._jockey = jockey;
 
       // Set up animation mixer for morph targets
       if (horseAnimClip) {
@@ -521,47 +635,78 @@ const Race3D = (() => {
         legs.push(legG);
       });
 
-      // Jockey
-      const jCol = col.clone().offsetHSL(0.15, 0.2, 0.1);
-      const jBody = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6),
-        new THREE.MeshLambertMaterial({ color: jCol }));
-      jBody.scale.set(0.8, 1.2, 0.7);
-      jBody.position.set(-0.1, 2.35, 0);
-      group.add(jBody);
-      const jHead = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6),
-        new THREE.MeshLambertMaterial({ color: 0xf5c9a0 }));
-      jHead.position.set(0.0, 2.65, 0);
-      group.add(jHead);
+      // Jockey (mounted on horse)
+      const jockey = createJockey(color, selfieUrl);
+      jockey.position.set(-0.1, 1.65, 0); // sit on horse's back
+      group.add(jockey);
+      group._jockey = jockey;
 
       group._fallbackLegs = legs;
     }
 
-    // ── Saddle cloth number (floating above horse) ──
+    // ── Saddle cloth number (floating above horse) — selfie face or number ──
     const canvas = document.createElement('canvas');
-    canvas.width = 64; canvas.height = 64;
+    canvas.width = 96; canvas.height = 96;
     const ctx2d = canvas.getContext('2d');
-    // Saddle cloth background (horse color)
-    ctx2d.fillStyle = color;
-    ctx2d.beginPath();
-    ctx2d.arc(32, 32, 28, 0, Math.PI * 2);
-    ctx2d.fill();
-    // White border
-    ctx2d.strokeStyle = '#ffffff';
-    ctx2d.lineWidth = 3;
-    ctx2d.stroke();
-    // Number text
-    ctx2d.fillStyle = '#ffffff';
-    ctx2d.font = 'bold 32px Arial';
-    ctx2d.textAlign = 'center';
-    ctx2d.textBaseline = 'middle';
-    ctx2d.fillText(String(laneIndex + 1), 32, 33);
 
+    function drawNumberBadge() {
+      ctx2d.clearRect(0, 0, 96, 96);
+      ctx2d.fillStyle = color;
+      ctx2d.beginPath();
+      ctx2d.arc(48, 48, 42, 0, Math.PI * 2);
+      ctx2d.fill();
+      ctx2d.strokeStyle = '#ffffff';
+      ctx2d.lineWidth = 3;
+      ctx2d.stroke();
+      ctx2d.fillStyle = '#ffffff';
+      ctx2d.font = 'bold 42px Arial';
+      ctx2d.textAlign = 'center';
+      ctx2d.textBaseline = 'middle';
+      ctx2d.fillText(String(laneIndex + 1), 48, 50);
+    }
+
+    drawNumberBadge();
     const numberTex = new THREE.CanvasTexture(canvas);
+
+    // If horse has an owner selfie, draw their face as the badge
+    if (selfieUrl) {
+      const selfImg = new Image();
+      selfImg.crossOrigin = 'anonymous';
+      selfImg.src = selfieUrl;
+      selfImg.onload = () => {
+        ctx2d.clearRect(0, 0, 96, 96);
+        // Draw circular selfie
+        ctx2d.save();
+        ctx2d.beginPath();
+        ctx2d.arc(48, 48, 42, 0, Math.PI * 2);
+        ctx2d.clip();
+        ctx2d.drawImage(selfImg, 0, 0, 96, 96);
+        ctx2d.restore();
+        // Gold border
+        ctx2d.strokeStyle = '#ffd700';
+        ctx2d.lineWidth = 4;
+        ctx2d.beginPath();
+        ctx2d.arc(48, 48, 42, 0, Math.PI * 2);
+        ctx2d.stroke();
+        // Small number in corner
+        ctx2d.fillStyle = color;
+        ctx2d.beginPath();
+        ctx2d.arc(78, 78, 14, 0, Math.PI * 2);
+        ctx2d.fill();
+        ctx2d.fillStyle = '#fff';
+        ctx2d.font = 'bold 16px Arial';
+        ctx2d.textAlign = 'center';
+        ctx2d.textBaseline = 'middle';
+        ctx2d.fillText(String(laneIndex + 1), 78, 79);
+        numberTex.needsUpdate = true;
+      };
+    }
+
     const numberSprite = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: numberTex, transparent: true })
     );
-    numberSprite.scale.set(1.8, 1.8, 1);
-    numberSprite.position.set(0, 4.2, 0);
+    numberSprite.scale.set(2.2, 2.2, 1);
+    numberSprite.position.set(0, 4.5, 0);
     group.add(numberSprite);
     group._numberSprite = numberSprite;
 
@@ -666,7 +811,7 @@ const Race3D = (() => {
     // Sync horse count
     while (horses3d.length < horsesData.length) {
       const i = horses3d.length;
-      horses3d.push(createHorse(horsesData[i].color, i, horsesData.length));
+      horses3d.push(createHorse(horsesData[i].color, i, horsesData.length, horsesData[i]));
     }
     while (horses3d.length > horsesData.length) {
       const rem = horses3d.pop();
