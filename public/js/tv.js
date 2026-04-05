@@ -1,11 +1,12 @@
 // ── Race Day - TV Display ───────────────────────────────────────────────
 
-const socket = io();
+// Reuse socket from inline script (created before heavy 3D libs loaded), or create new
+const socket = window._tvSocket || io({ transports: ['polling', 'websocket'] });
 
 const AVATARS = ['😎', '🤠', '👑', '🎩', '🦊', '🐺', '🦁', '🐲', '💀', '🤖', '👽', '🎭'];
 
-let roomCode = '';
-let players = [];
+let roomCode = window._tvRoomCode || '';
+let players = window._tvPlayers || [];
 let currentGame = null;
 let floatingPositions = {};
 let floatAnimFrameId = null;
@@ -59,6 +60,14 @@ if (soundBtn) {
 // ── Init: TV creates the room ───────────────────────────────────────────
 
 function init() {
+  // If inline script already created the room, just show the info
+  if (roomCode) {
+    showJoinInfo();
+    updateFloatingPlayers();
+    if (window._dbgEl) window._dbgEl.parentElement.style.display = 'none';
+    return;
+  }
+  // Otherwise create room now
   socket.emit('tv:create');
 }
 

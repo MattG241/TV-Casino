@@ -40,7 +40,6 @@
             <div class="tv-join-code">Room: <strong id="tvJoinCode">----</strong></div>
           </div>
           <div class="tv-floating-area" id="tvFloatingArea">
-            <!-- Floating player avatars appear here -->
             <div class="tv-waiting-text" id="tvWaitingText">Waiting for players...</div>
           </div>
         </div>
@@ -56,12 +55,71 @@
 
   <div class="confetti-container" id="confetti"></div>
 
+  <!-- Debug overlay — tap to dismiss -->
+  <div id="tvDebug" style="position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.85);color:#0f0;font:12px monospace;padding:8px 12px;z-index:9999;max-height:120px;overflow:hidden;cursor:pointer" onclick="this.style.display='none'">
+    <div id="tvDbgStatus">Loading...</div>
+  </div>
+
+  <!-- Step 1: socket.io client -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+  <!-- Step 2: Connect immediately — before heavy 3D scripts block the thread -->
+  <script>
+    window._dbgEl = document.getElementById('tvDbgStatus');
+    function _dbg(msg) {
+      if (window._dbgEl) window._dbgEl.innerHTML = msg;
+      console.log('[TV]', msg);
+    }
+    window.onerror = function(msg, src, line) {
+      _dbg('JS Error: ' + msg + '<br>' + (src || '').split('/').pop() + ':' + line);
+    };
+
+    if (typeof io === 'undefined') {
+      _dbg('FATAL: socket.io failed to load');
+    } else {
+      _dbg('socket.io loaded — connecting...');
+      window._tvSocket = io({ transports: ['polling', 'websocket'] });
+      window._tvSocket.on('connect', function() {
+        _dbg('Connected (' + window._tvSocket.io.engine.transport.name + ') — creating room...');
+        window._tvSocket.emit('tv:create');
+      });
+
+      // Handle tv:created HERE in case tv.js hasn't loaded yet
+      window._tvSocket.on('tv:created', function(data) {
+        window._tvRoomCode = data.code;
+        window._tvPlayers = data.players;
+        _dbg('Room: ' + data.code);
+        ['tvRoomCode', 'tvJoinCode'].forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = data.code;
+        });
+        var joinUrl = window.location.protocol + '//' + window.location.host + '/?room=' + data.code;
+        var urlEl = document.getElementById('tvJoinUrl');
+        if (urlEl) urlEl.textContent = joinUrl;
+        function tryQR() {
+          var canvas = document.getElementById('qrCanvas');
+          if (canvas && typeof QRCode !== 'undefined') {
+            QRCode.render(canvas, joinUrl);
+          } else {
+            setTimeout(tryQR, 200);
+          }
+        }
+        tryQR();
+      });
+
+      window._tvSocket.on('connect_error', function(e) { _dbg('Connect error: ' + e.message); });
+      window._tvSocket.on('disconnect', function(r) { _dbg('Disconnected: ' + r); });
+    }
+  </script>
+
+  <!-- Step 3: Small scripts + tv.js load fast (socket handlers register) -->
   <script src="/js/qr.js"></script>
   <script src="/js/tv-audio.js"></script>
-  <script src="/js/race3d.js"></script>
   <script src="/js/tv.js"></script>
+
+  <!-- Step 4: Heavy 3D libs load last -->
+  <script src="/js/three.min.js"></script>
+  <script src="/js/GLTFLoader.js"></script>
+  <script src="/js/race3d.js"></script>
 </body>
 </html>
