@@ -3,6 +3,7 @@ const http = require('http');
 const https = require('https');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
+const QRCode = require('qrcode');
 
 // Prevent crashes from unhandled errors
 process.on('uncaughtException', (err) => console.error('Uncaught:', err.message));
@@ -15,6 +16,17 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use(express.static('public'));
 
 app.get('/tv', (req, res) => res.sendFile(__dirname + '/public/tv.html'));
+
+// ── QR code endpoint — serves SVG, no external dependencies ──────────────
+app.get('/api/qr', (req, res) => {
+  const data = (req.query.data || '').substring(0, 500);
+  if (!data) return res.status(400).send('No data');
+  QRCode.toString(data, { type: 'svg', margin: 1, color: { dark: '#000', light: '#fff' } }, (err, svg) => {
+    if (err) return res.status(500).send('QR error');
+    res.set({ 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=3600' });
+    res.send(svg);
+  });
+});
 
 // ── TTS Proxy — for browsers without speechSynthesis (Amazon Fire TV etc) ───
 app.get('/api/tts', (req, res) => {
