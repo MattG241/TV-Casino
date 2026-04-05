@@ -73,6 +73,8 @@ function playerList(room) {
     isHost: p.id === room.hostId,
     avatar: p.avatar,
     isAI: p.isAI || false,
+    selfie: p.selfie || null,
+    horseName: p.horseName || null,
   }));
 }
 
@@ -303,6 +305,33 @@ const games = {
             heartRate: 0.5,       // simulated heart rate (affects energy burn)
           },
         };
+      });
+
+      // ── ASSIGN PLAYER HORSE NAMES & SELFIES ──
+      // Each player with a custom horse name gets one horse renamed
+      const playersWithHorseNames = room.players.filter(p => p.horseName && p.horseName.trim());
+      const shuffledHorseIndices = Array.from({length: horses.length}, (_, i) => i)
+        .sort(() => Math.random() - 0.5);
+      playersWithHorseNames.forEach((p, pi) => {
+        if (pi < shuffledHorseIndices.length) {
+          const horseIdx = shuffledHorseIndices[pi];
+          horses[horseIdx].name = p.horseName;
+          horses[horseIdx].ownerId = p.id;
+          horses[horseIdx].ownerSelfie = p.selfie || null;
+          horses[horseIdx].ownerName = p.name;
+        }
+      });
+      // Also tag horses for players who have selfies but no horse name
+      const playersWithSelfieOnly = room.players.filter(p => p.selfie && (!p.horseName || !p.horseName.trim()));
+      let nextIdx = playersWithHorseNames.length;
+      playersWithSelfieOnly.forEach(p => {
+        if (nextIdx < shuffledHorseIndices.length) {
+          const horseIdx = shuffledHorseIndices[nextIdx];
+          horses[horseIdx].ownerId = p.id;
+          horses[horseIdx].ownerSelfie = p.selfie;
+          horses[horseIdx].ownerName = p.name;
+          nextIdx++;
+        }
       });
 
       // ── FORM GUIDE — carry race history between races ──
@@ -1022,12 +1051,15 @@ io.on('connection', (socket) => {
 
   socket.on('room:join', (data) => {
     if (!data || typeof data !== 'object') return;
-    const { code, playerName, avatar } = data;
+    const { code, playerName, avatar, selfie, horseName } = data;
     const room = getRoom(code);
     if (!room) return socket.emit('room:error', { message: 'Room not found' });
     if (room.players.length >= 8) return socket.emit('room:error', { message: 'Room is full' });
     playerId = uuidv4();
-    const player = { id: playerId, name: playerName, chips: 1000, socket, avatar: avatar || 0 };
+    // Validate selfie is a reasonable data URL (max ~100KB)
+    const validSelfie = typeof selfie === 'string' && selfie.startsWith('data:image/') && selfie.length < 150000 ? selfie : null;
+    const validHorseName = typeof horseName === 'string' ? horseName.substring(0, 20).trim() : '';
+    const player = { id: playerId, name: playerName, chips: 1000, socket, avatar: avatar || 0, selfie: validSelfie, horseName: validHorseName };
     room.players.push(player);
     currentRoom = room;
     socket.emit('room:joined', { code: room.code, playerId, players: playerList(room), currentGame: room.currentGame });

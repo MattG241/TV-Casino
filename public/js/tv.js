@@ -132,9 +132,9 @@ function updateFloatingPlayers() {
       };
     }
     el.innerHTML = `
-      <div class="fp-avatar">${AVATARS[p.avatar] || '😎'}</div>
+      <div class="fp-avatar">${p.selfie ? `<img src="${p.selfie}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">` : (AVATARS[p.avatar] || '😎')}</div>
       <div class="fp-name">${p.name}</div>
-      <div class="fp-chips">$${p.chips.toLocaleString()}</div>
+      <div class="fp-chips">${p.horseName ? '🏇 ' + p.horseName : '$' + p.chips.toLocaleString()}</div>
     `;
   });
 
@@ -252,7 +252,7 @@ function showTVScreen(id) {
 function renderPlayers() {
   const html = players.map(p => `
     <div class="tv-player" id="tvPlayer_${p.id}">
-      <div class="avatar">${AVATARS[p.avatar] || '😎'}</div>
+      <div class="avatar">${p.selfie ? `<img src="${p.selfie}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">` : (AVATARS[p.avatar] || '😎')}</div>
       <div class="name">${p.name}</div>
       <div class="chips">$${p.chips.toLocaleString()}</div>
     </div>
@@ -417,9 +417,9 @@ function renderTVHorseRacing(state) {
           </div>`;
         return `
           <div class="sky-odds-row ${i === 0 ? 'sky-fav' : ''} ${betOnThis > 0 ? 'sky-backed' : ''}">
-            <span class="sky-or-num">${origIdx+1}</span>
+            ${h.ownerSelfie ? `<span class="sky-or-num" style="padding:0;overflow:hidden;border-radius:50%"><img src="${h.ownerSelfie}" style="width:100%;height:100%;object-fit:cover"></span>` : `<span class="sky-or-num">${origIdx+1}</span>`}
             <span class="sky-or-odds ${h.odds < h.baseOdds ? 'odds-short' : h.odds > h.baseOdds ? 'odds-drift' : ''}">${h.odds.toFixed(2)}</span>
-            <span class="sky-or-name" style="color:${h.color}">${h.name}${h.jockey ? `<br><span class="sky-or-jockey">${h.jockey}</span>` : ''}</span>
+            <span class="sky-or-name" style="color:${h.color}">${h.name}${h.ownerName ? ` <span style="font-size:9px;opacity:0.5">(${h.ownerName})</span>` : ''}${h.jockey ? `<br><span class="sky-or-jockey">${h.jockey}</span>` : ''}</span>
             <span class="sky-or-style">${h.styleDesc || ''}${h.temperament ? `<br><span class="sky-or-temp">${h.temperament}</span>` : ''}</span>
             <span class="sky-or-barrier">(${barrier})</span>
           </div>`;
@@ -526,8 +526,8 @@ function renderTVHorseRacing(state) {
         return `
         <div class="sky-runner ${isWinner ? 'sky-runner-winner' : ''} ${isSecond ? 'sky-runner-second' : ''} ${isThird ? 'sky-runner-third' : ''} ${pos === 0 && isRacing ? 'sky-runner-lead' : ''} ${isBlocked ? 'sky-runner-blocked' : ''}">
           <span class="sky-r-pos">${pos + 1}</span>
-          <span class="sky-r-silk" style="background:${h.color}">${origIdx+1}</span>
-          <span class="sky-r-name">${h.name.length > 14 ? h.name.substring(0,12)+'..' : h.name}${isBlocked && isRacing ? ' <span class="sky-blocked-tag">BOXED</span>' : ''}</span>
+          ${h.ownerSelfie ? `<span class="sky-r-silk" style="padding:0;overflow:hidden"><img src="${h.ownerSelfie}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></span>` : `<span class="sky-r-silk" style="background:${h.color}">${origIdx+1}</span>`}
+          <span class="sky-r-name">${h.name.length > 14 ? h.name.substring(0,12)+'..' : h.name}${h.ownerName ? ' <span style="font-size:8px;opacity:0.6">(' + h.ownerName + ')</span>' : ''}${isBlocked && isRacing ? ' <span class="sky-blocked-tag">BOXED</span>' : ''}</span>
           ${marginText && pos > 0 ? `<span class="sky-r-margin">${marginText}</span>` : ''}
           ${isRacing ? `<span class="sky-r-effort" title="Effort"><span class="sky-effort-bar" style="width:${effort}%"></span></span>` : ''}
           <span class="sky-r-odds">$${(h.lockedOdds||h.odds).toFixed(2)}</span>

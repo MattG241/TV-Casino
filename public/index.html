@@ -22,10 +22,25 @@
 
     <!-- JOIN SCREEN -->
     <div class="screen active" id="joinScreen">
-      <div class="avatar-picker" id="avatarPicker"></div>
+      <div class="selfie-section">
+        <div class="selfie-frame" id="selfieFrame" onclick="openCamera()">
+          <video id="selfieVideo" autoplay playsinline muted style="display:none"></video>
+          <canvas id="selfieCanvas" width="200" height="200" style="display:none"></canvas>
+          <img id="selfiePreview" style="display:none" alt="Your selfie">
+          <div class="selfie-placeholder" id="selfiePlaceholder">
+            <div style="font-size:36px">📸</div>
+            <div style="font-size:11px;margin-top:4px">TAP FOR SELFIE</div>
+          </div>
+          <button class="selfie-snap-btn" id="snapBtn" style="display:none" onclick="event.stopPropagation(); snapSelfie()">📷 SNAP</button>
+          <button class="selfie-retake-btn" id="retakeBtn" style="display:none" onclick="event.stopPropagation(); retakeSelfie()">↺ RETAKE</button>
+        </div>
+      </div>
       <div class="join-form">
         <div class="input-group">
           <input type="text" id="playerName" placeholder="Your Name" maxlength="12" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <input type="text" id="horseName" placeholder="Name Your Horse" maxlength="20" autocomplete="off">
         </div>
         <div class="input-group">
           <input type="text" id="roomCode" placeholder="Room Code" maxlength="4" autocomplete="off" class="room-code-input">

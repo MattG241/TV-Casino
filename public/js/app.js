@@ -11,25 +11,15 @@ let roomCode = '';
 let selectedAvatar = 0;
 let currentGame = null;
 let players = [];
+let mySelfie = null; // base64 data URL
+let myHorseName = '';
+let cameraStream = null;
 
 const AVATARS = ['😎', '🤠', '👑', '🎩', '🦊', '🐺', '🦁', '🐲', '💀', '🤖', '👽', '🎭'];
 
 // ── Init ────────────────────────────────────────────────────────────────
 
 function init() {
-  const picker = document.getElementById('avatarPicker');
-  AVATARS.forEach((a, i) => {
-    const el = document.createElement('div');
-    el.className = `avatar-option${i === 0 ? ' selected' : ''}`;
-    el.textContent = a;
-    el.onclick = () => {
-      document.querySelectorAll('.avatar-option').forEach(e => e.classList.remove('selected'));
-      el.classList.add('selected');
-      selectedAvatar = i;
-    };
-    picker.appendChild(el);
-  });
-
   // Auto-fill room code from URL param (from QR code scan)
   const params = new URLSearchParams(window.location.search);
   const roomParam = params.get('room');
@@ -40,6 +30,67 @@ function init() {
 }
 
 init();
+
+// ── Selfie Camera ──────────────────────────────────────────────────────
+
+function openCamera() {
+  if (mySelfie) return; // already have a selfie
+  const video = document.getElementById('selfieVideo');
+  const placeholder = document.getElementById('selfiePlaceholder');
+  const snapBtn = document.getElementById('snapBtn');
+
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'user', width: { ideal: 300 }, height: { ideal: 300 } }
+  }).then(stream => {
+    cameraStream = stream;
+    video.srcObject = stream;
+    video.style.display = 'block';
+    placeholder.style.display = 'none';
+    snapBtn.style.display = 'block';
+  }).catch(() => {
+    showToast('Camera access needed for selfie');
+  });
+}
+
+function snapSelfie() {
+  const video = document.getElementById('selfieVideo');
+  const canvas = document.getElementById('selfieCanvas');
+  const preview = document.getElementById('selfiePreview');
+  const snapBtn = document.getElementById('snapBtn');
+  const retakeBtn = document.getElementById('retakeBtn');
+
+  // Draw video frame to canvas (square crop)
+  const ctx = canvas.getContext('2d');
+  const size = Math.min(video.videoWidth, video.videoHeight);
+  const sx = (video.videoWidth - size) / 2;
+  const sy = (video.videoHeight - size) / 2;
+  ctx.drawImage(video, sx, sy, size, size, 0, 0, 200, 200);
+
+  // Convert to compressed JPEG data URL
+  mySelfie = canvas.toDataURL('image/jpeg', 0.6);
+
+  // Show preview, hide video
+  preview.src = mySelfie;
+  preview.style.display = 'block';
+  video.style.display = 'none';
+  snapBtn.style.display = 'none';
+  retakeBtn.style.display = 'block';
+
+  // Stop camera
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+}
+
+function retakeSelfie() {
+  mySelfie = null;
+  const preview = document.getElementById('selfiePreview');
+  const retakeBtn = document.getElementById('retakeBtn');
+  preview.style.display = 'none';
+  retakeBtn.style.display = 'none';
+  openCamera();
+}
 
 // ── Navigation ──────────────────────────────────────────────────────────
 
@@ -113,9 +164,12 @@ if (!tryRejoin()) {
 
 function joinRoom() {
   myName = document.getElementById('playerName').value.trim() || 'Player';
+  myHorseName = document.getElementById('horseName').value.trim() || '';
   const code = document.getElementById('roomCode').value.trim().toUpperCase();
   if (code.length !== 4) return showToast('Enter a 4-letter code');
-  socket.emit('room:join', { code, playerName: myName, avatar: selectedAvatar });
+  // Stop camera if still running
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  socket.emit('room:join', { code, playerName: myName, avatar: selectedAvatar, selfie: mySelfie, horseName: myHorseName });
 }
 
 socket.on('room:joined', (data) => {
@@ -167,7 +221,7 @@ function updatePlayers(list) {
   const bars = document.querySelectorAll('#playersBar, #gamePlayersBar');
   const html = list.map(p => `
     <div class="player-chip">
-      <div class="avatar">${AVATARS[p.avatar] || '😎'}</div>
+      <div class="avatar">${p.selfie ? `<img src="${p.selfie}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">` : (AVATARS[p.avatar] || '😎')}</div>
       <div class="name">${p.name}${p.id === myId ? ' (you)' : ''}</div>
       <div class="chips">$${p.chips.toLocaleString()}</div>
     </div>

@@ -131,33 +131,79 @@ body {
 .btn-sm { padding: 10px 16px; font-size: 12px; }
 .btn-block { width: 100%; }
 
-/* ── Avatar Picker ────────────────────────────────────────────────────── */
-.avatar-picker {
+/* ── Selfie Section ──────────────────────────────────────────────────── */
+.selfie-section {
   display: flex;
-  gap: 8px;
   justify-content: center;
-  margin: 12px 0 20px;
-  flex-wrap: wrap;
+  margin: 8px 0 16px;
 }
 
-.avatar-option {
-  width: 46px;
-  height: 46px;
+.selfie-frame {
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
+  border: 3px solid var(--gold);
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  background: var(--bg-surface);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  cursor: pointer;
-  border: 2px solid transparent;
-  background: var(--bg-surface);
-  transition: all 0.2s ease;
+  box-shadow: 0 0 20px rgba(201,168,76,0.2);
+  transition: box-shadow 0.3s;
 }
 
-.avatar-option.selected {
-  border-color: var(--gold);
-  box-shadow: 0 0 12px rgba(201,168,76,0.3);
+.selfie-frame:active {
+  box-shadow: 0 0 30px rgba(201,168,76,0.4);
+}
+
+.selfie-frame video,
+.selfie-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.selfie-placeholder {
+  text-align: center;
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.selfie-snap-btn {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gold);
+  color: #000;
+  border: none;
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 2;
+  white-space: nowrap;
+}
+
+.selfie-retake-btn {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
   background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 2;
+  white-space: nowrap;
 }
 
 /* ── Join Form ────────────────────────────────────────────────────────── */
