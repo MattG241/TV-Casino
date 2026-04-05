@@ -307,6 +307,13 @@ function showTVScreen(id) {
   }
   // Stop gallop audio
   if (id !== 'tvHorseracing') CasinoAudio.stopGallop();
+  // Reset phase trackers so audio triggers properly on game re-entry
+  lastRoulettePhase = null;
+  lastSlotsPhase = null;
+  lastBJPhase = null;
+  lastPokerPhase = null;
+  lastRacePhase = null;
+  lastSpokenText = null;
 }
 
 function renderPlayers() {
@@ -854,7 +861,7 @@ function renderTVHorseRacing(state) {
     if (oddsEl) {
       oddsEl.innerHTML = sorted.map((h, i) => {
         const origIdx = horses.indexOf(h);
-        const barrier = origIdx + 1;
+        const barrier = h.barrier || origIdx + 1;
         const betOnThis = Object.values(state.bets||{}).filter(b=>b.horseId===h.id).length;
         if (h.scratched) return `
           <div class="sky-odds-row sky-scr">

@@ -101,7 +101,7 @@ export function useSocket() {
   }, [])
 
   const confirmReady = useCallback(() => {
-    socketRef.current?.emit('lobby:everyone-in')
+    socketRef.current?.emit('lobby:ready')
   }, [])
 
   return {

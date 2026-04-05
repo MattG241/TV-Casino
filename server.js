@@ -397,6 +397,7 @@ const games = {
 
     _startBettingTimer(room) {
       if (room._slotsTimer) clearInterval(room._slotsTimer);
+      const self = this;
       room._slotsTimer = setInterval(() => {
         if (!room.gameState || room.currentGame !== 'slots') {
           clearInterval(room._slotsTimer);
@@ -406,7 +407,7 @@ const games = {
         broadcastToRoom(room, 'game:timer', { timer: room.gameState.timer });
         if (room.gameState.timer <= 0) {
           clearInterval(room._slotsTimer);
-          this.spinAll(room);
+          self.spinAll(room);
         }
       }, 1000);
     },
@@ -772,7 +773,7 @@ const games = {
   poker: {
     // ── AI PLAYER NAMES & PERSONALITIES ──
     AI_NAMES: ['Ace McGraw', 'Lucky Lou', 'Poker Pete', 'Card Shark', 'Bluff King', 'The Dealer', 'Wild Card', 'High Roller'],
-    AI_AVATARS: [6, 7, 8, 9, 10, 11, 12, 13],
+    AI_AVATARS: [6, 7, 8, 9, 10, 11],
 
     // Add AI player to room if only 1 human player
     ensureAIPlayer(room) {
@@ -2310,6 +2311,14 @@ io.on('connection', (socket) => {
         clearInterval(currentRoom._oddsInterval);
         currentRoom._oddsInterval = null;
       }
+      if (currentRoom._slotsTimer) {
+        clearInterval(currentRoom._slotsTimer);
+        currentRoom._slotsTimer = null;
+      }
+      if (currentRoom._aiActionTimer) {
+        clearTimeout(currentRoom._aiActionTimer);
+        currentRoom._aiActionTimer = null;
+      }
       clearTimeout(currentRoom._betBroadcastTimeout);
       currentRoom.currentGame = null;
       currentRoom.gameState = null;
@@ -2422,6 +2431,8 @@ io.on('connection', (socket) => {
           if (room._voteTimerInterval) clearInterval(room._voteTimerInterval);
           if (room._raceInterval) clearInterval(room._raceInterval);
           if (room._oddsInterval) clearInterval(room._oddsInterval);
+          if (room._slotsTimer) clearInterval(room._slotsTimer);
+          if (room._aiActionTimer) clearTimeout(room._aiActionTimer);
           clearTimeout(room._betBroadcastTimeout);
           rooms.delete(room.code);
         } else {
@@ -2446,6 +2457,8 @@ setInterval(() => {
       if (room._voteTimerInterval) clearInterval(room._voteTimerInterval);
       if (room._raceInterval) clearInterval(room._raceInterval);
       if (room._oddsInterval) clearInterval(room._oddsInterval);
+      if (room._slotsTimer) clearInterval(room._slotsTimer);
+      if (room._aiActionTimer) clearTimeout(room._aiActionTimer);
       clearTimeout(room._betBroadcastTimeout);
       room.players.forEach(p => { if (p._disconnectTimer) clearTimeout(p._disconnectTimer); });
       rooms.delete(code);

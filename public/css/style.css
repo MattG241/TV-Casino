@@ -19,6 +19,7 @@
   --purple: #8b5cf6;
   --text: #e8e6e1;
   --text-secondary: #9ca3af;
+  --text-dim: #6b7280;
   --text-muted: #6b7280;
   --border: rgba(255,255,255,0.06);
   --border-gold: rgba(201,168,76,0.25);
@@ -1311,10 +1312,36 @@ body {
   backdrop-filter: blur(10px);
 }
 
+/* ── Safe Area & Cross-Device ─────────────────────────────────────────── */
+.container {
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  padding-left: calc(16px + env(safe-area-inset-left, 0px));
+  padding-right: calc(16px + env(safe-area-inset-right, 0px));
+}
+
+body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent pull-to-refresh on mobile */
+html { overscroll-behavior: none; }
+
+/* Fix 100vh on mobile browsers (address bar) */
+@supports (height: 100dvh) {
+  body, .container { min-height: 100dvh; }
+}
+
 /* ── Responsive ───────────────────────────────────────────────────────── */
 @media (max-width: 360px) {
   .game-grid { grid-template-columns: 1fr; }
   .slot-reel { width: 60px; height: 160px; }
   .slot-symbol { font-size: 26px; }
   .num-btn { padding: 8px 2px; font-size: 11px; }
+}
+
+@media (max-height: 600px) {
+  .header { padding: 12px 0 8px; }
+  .logo { font-size: 24px; }
+  .logo-sub { font-size: 9px; }
 }

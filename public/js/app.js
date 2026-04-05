@@ -311,7 +311,7 @@ socket.on('game:timer', ({ timer }) => {
   if (el) el.textContent = timer > 0 ? `${timer}s remaining` : "Time's up!";
   const fill = document.querySelector('.timer-fill');
   if (fill) {
-    const maxTime = currentGame === 'roulette' ? 20 : 15;
+    const maxTime = currentGame === 'roulette' ? 20 : currentGame === 'horseracing' ? 25 : 15;
     fill.style.width = `${(timer / maxTime) * 100}%`;
   }
 });
@@ -1120,7 +1120,7 @@ function renderHorseRacing(state) {
               <div class="sb-result-bet-type">${(myBet.betType || 'win').toUpperCase()} BET</div>
               ${myBet.won
                 ? '<div class="sb-win-amount">+$'+myBet.winAmount+'</div><div class="sb-win-sub">Paid $'+(myBet.lockedAtOdds?.toFixed(2)||'?')+'</div>'
-                : '<div class="sb-loss-msg">'+(myBet.betType === 'trifecta' ? 'Trifecta did not land' : 'Finished '+(state.livePositions?.find(lp=>lp.id===myBet.horseId)?.pos||'?')+(['st','nd','rd'][((state.livePositions?.find(lp=>lp.id===myBet.horseId)?.pos||4)-1)]||'th'))+'</div>'
+                : '<div class="sb-loss-msg">'+(myBet.betType === 'trifecta' ? 'Trifecta did not land' : (()=>{const p=state.livePositions?.find(lp=>lp.id===myBet.horseId)?.pos;if(!p)return'Did not place';const s=['th','st','nd','rd'];const v=p%100;return'Finished '+p+(s[(v-20)%10]||s[v]||s[0])})())+'</div>'
               }
             </div>
           ` : ''}
