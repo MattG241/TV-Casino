@@ -11,7 +11,11 @@ process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', 
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+  allowEIO3: true,
+  transports: ['polling', 'websocket'],
+});
 
 app.use(express.static('public'));
 

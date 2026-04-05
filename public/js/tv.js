@@ -1,6 +1,6 @@
 // ── TV Casino - TV Display ──────────────────────────────────────────────
 
-const socket = io({ transports: ['websocket', 'polling'] });
+const socket = io({ transports: ['polling', 'websocket'] });
 
 const AVATARS = ['😎', '🤠', '👑', '🎩', '🦊', '🐺', '🦁', '🐲', '💀', '🤖', '👽', '🎭'];
 

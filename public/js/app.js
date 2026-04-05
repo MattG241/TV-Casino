@@ -1,6 +1,6 @@
 // ── TV Casino Mobile App ────────────────────────────────────────────────
 
-const socket = io();
+const socket = io({ transports: ['polling', 'websocket'] });
 
 // ── State ───────────────────────────────────────────────────────────────
 
