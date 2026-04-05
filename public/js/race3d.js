@@ -280,14 +280,12 @@ const Race3D = (() => {
     const col = new THREE.Color(silkColor);
 
     if (jockeyReady && jockeyTemplate) {
-      // Clone the scene properly — deep clone all meshes
+      // Clone all meshes from the template
       const model = new THREE.Group();
       jockeyTemplate.traverse((child) => {
         if (child.isMesh) {
-          const clonedGeo = child.geometry.clone();
-          const mat = new THREE.MeshLambertMaterial({ color: col.clone() });
-          mat.side = THREE.DoubleSide;
-          const mesh = new THREE.Mesh(clonedGeo, mat);
+          const mesh = new THREE.Mesh(child.geometry.clone(),
+            new THREE.MeshLambertMaterial({ color: col.clone(), side: THREE.DoubleSide }));
           mesh.castShadow = true;
           mesh.position.copy(child.position);
           mesh.rotation.copy(child.rotation);
@@ -296,65 +294,77 @@ const Race3D = (() => {
         }
       });
 
-      // Model is ~20.7 units tall. Scale so jockey is ~1.0 unit tall (crouched riding)
-      model.scale.set(0.048, 0.048, 0.048);
-      // Rotate to face horse's forward direction (+X in our track system)
+      // Model is ~20.7 units tall. Scale to ~1.8 units tall for visible jockey
+      model.scale.set(0.085, 0.085, 0.085);
+      // Face forward (+X on track) and lean forward like a real jockey
       model.rotation.y = Math.PI / 2;
+      model.rotation.x = 0.35; // lean forward into riding crouch
+      // Shift model down so legs straddle the horse (model origin is at feet)
+      model.position.set(0.2, -0.3, 0);
       group.add(model);
 
-      // Selfie face sprite near head position (head top is ~20.7 * 0.048 = ~1.0 above group origin)
+      // Selfie face sprite at head height
       if (selfieUrl) {
-        const faceSprite = _makeFaceSprite(selfieUrl, 0.35);
-        faceSprite.position.set(0.05, 1.05, 0);
+        const faceSprite = _makeFaceSprite(selfieUrl, 0.55);
+        faceSprite.position.set(0.4, 1.6, 0);
         group.add(faceSprite);
       }
     } else {
-      // Fallback: geometric jockey
+      // Fallback: geometric jockey — built to be visible at race camera distance
       const silkMat = new THREE.MeshLambertMaterial({ color: col });
       const skinMat = new THREE.MeshLambertMaterial({ color: 0xdeb38a });
+      const whiteMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee });
+      const bootMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
 
-      // Torso (leaning forward in riding crouch)
-      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.45, 8), silkMat);
-      torso.position.set(0, 0.5, 0);
-      torso.rotation.z = 0.3; // lean forward
+      // Torso — big enough to see, leaning forward
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.65, 8), silkMat);
+      torso.position.set(0.1, 0.7, 0);
+      torso.rotation.z = 0.4;
       torso.castShadow = true;
       group.add(torso);
 
-      // Arms
-      [-0.18, 0.18].forEach(z => {
-        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.35, 6), silkMat);
-        arm.position.set(0.18, 0.55, z);
-        arm.rotation.z = 0.8;
+      // Arms reaching forward for reins
+      [-0.22, 0.22].forEach(z => {
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.5, 6), silkMat);
+        arm.position.set(0.4, 0.75, z);
+        arm.rotation.z = 1.0;
+        arm.castShadow = true;
         group.add(arm);
       });
 
       // Head
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), skinMat);
-      head.position.set(0.05, 0.82, 0);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), skinMat);
+      head.position.set(0.2, 1.15, 0);
       head.castShadow = true;
       group.add(head);
 
       // Helmet
-      const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), silkMat);
+      const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.155, 8, 6), silkMat);
       helmet.scale.set(1, 0.7, 1);
-      helmet.position.set(0.04, 0.87, 0);
+      helmet.position.set(0.18, 1.22, 0);
       group.add(helmet);
 
-      // Legs (bent for riding)
-      [-0.12, 0.12].forEach(z => {
-        const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.3, 6), new THREE.MeshLambertMaterial({ color: 0xeeeeee }));
-        thigh.position.set(-0.08, 0.22, z);
-        thigh.rotation.z = -0.5;
+      // Thighs — bent, gripping horse
+      [-0.16, 0.16].forEach(z => {
+        const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.4, 6), whiteMat);
+        thigh.position.set(-0.05, 0.3, z);
+        thigh.rotation.z = -0.6;
+        thigh.castShadow = true;
         group.add(thigh);
-        const boot = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.25, 6), new THREE.MeshLambertMaterial({ color: 0x222222 }));
-        boot.position.set(-0.02, 0.02, z);
+      });
+
+      // Boots — hanging down the horse's sides
+      [-0.18, 0.18].forEach(z => {
+        const boot = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.35, 6), bootMat);
+        boot.position.set(-0.15, 0.0, z);
+        boot.castShadow = true;
         group.add(boot);
       });
 
       // Selfie face sprite
       if (selfieUrl) {
-        const faceSprite = _makeFaceSprite(selfieUrl, 0.28);
-        faceSprite.position.set(0.12, 0.82, 0);
+        const faceSprite = _makeFaceSprite(selfieUrl, 0.45);
+        faceSprite.position.set(0.3, 1.15, 0);
         group.add(faceSprite);
       }
     }
@@ -588,9 +598,9 @@ const Race3D = (() => {
       group.add(model);
       group._model = model;
 
-      // Mount jockey on GLB horse back (horse Y~120 model units * 0.02 scale = Y~2.4)
+      // Mount jockey on GLB horse back — horse ~3.6 units tall at 0.02 scale, back ~2.5
       const jockey = createJockey(color, selfieUrl);
-      jockey.position.set(0, 2.3, 0);
+      jockey.position.set(-0.3, 2.6, 0);
       group.add(jockey);
       group._jockey = jockey;
 
@@ -671,9 +681,9 @@ const Race3D = (() => {
         legs.push(legG);
       });
 
-      // Jockey (mounted on fallback horse — torso top is at Y~2.35)
+      // Jockey mounted on fallback horse — sits on torso
       const jockey = createJockey(color, selfieUrl);
-      jockey.position.set(-0.1, 1.6, 0);
+      jockey.position.set(-0.2, 1.55, 0);
       group.add(jockey);
       group._jockey = jockey;
 
@@ -741,8 +751,8 @@ const Race3D = (() => {
     const numberSprite = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: numberTex, transparent: true })
     );
-    numberSprite.scale.set(2.2, 2.2, 1);
-    numberSprite.position.set(0, 4.5, 0);
+    numberSprite.scale.set(2.8, 2.8, 1);
+    numberSprite.position.set(0, 5.0, 0);
     group.add(numberSprite);
     group._numberSprite = numberSprite;
 
