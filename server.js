@@ -2211,13 +2211,19 @@ io.on('connection', (socket) => {
   // Rejoin — reconnect a returning player to their existing session
   socket.on('room:rejoin', (data) => {
     if (!data || typeof data !== 'object') return;
-    const { code, existingPlayerId } = data;
+    const { code, existingPlayerId, selfie, horseName } = data;
     const room = getRoom(code);
     if (!room) return socket.emit('room:error', { message: 'Room not found' });
     const existing = room.players.find(p => p.id === existingPlayerId);
     if (!existing) return socket.emit('room:error', { message: 'Session expired' });
-    // Reattach socket
+    // Reattach socket and refresh selfie/horseName in case they changed
     existing.socket = socket;
+    if (selfie && typeof selfie === 'string' && selfie.startsWith('data:image') && selfie.length < 120000) {
+      existing.selfie = selfie;
+    }
+    if (horseName && typeof horseName === 'string') {
+      existing.horseName = horseName.substring(0, 20);
+    }
     if (existing._disconnectTimer) { clearTimeout(existing._disconnectTimer); delete existing._disconnectTimer; }
     playerId = existingPlayerId;
     currentRoom = room;

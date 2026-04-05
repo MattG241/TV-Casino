@@ -3,12 +3,6 @@
 const socket = io();
 
 const AVATARS = ['😎', '🤠', '👑', '🎩', '🦊', '🐺', '🦁', '🐲', '💀', '🤖', '👽', '🎭'];
-const SUIT_SYMBOLS = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
-const SLOT_SYMBOLS = {
-  cherry: '🍒', lemon: '🍋', orange: '🍊', plum: '🍇',
-  bell: '🔔', bar: '📊', seven: '7️⃣', diamond: '💎'
-};
-const RED_NUMBERS = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
 
 let roomCode = '';
 let players = [];
@@ -248,26 +242,6 @@ function renderPlayers() {
   document.querySelectorAll('.tv-players').forEach(el => el.innerHTML = html);
 }
 
-function renderTVCard(card) {
-  if (!card || card.rank === 'hidden') return '<div class="tv-card hidden"></div>';
-  const suit = SUIT_SYMBOLS[card.suit] || '';
-  return `<div class="tv-card ${card.suit}">
-    <span class="card-rank">${card.rank}</span>
-    <span class="card-suit">${suit}</span>
-  </div>`;
-}
-
-function handValueCalc(hand) {
-  let total = 0, aces = 0;
-  for (const c of hand) {
-    if (!c || c.rank === 'hidden') continue;
-    if (['J','Q','K'].includes(c.rank)) total += 10;
-    else if (c.rank === 'A') { total += 11; aces++; }
-    else total += parseInt(c.rank);
-  }
-  while (total > 21 && aces > 0) { total -= 10; aces--; }
-  return total;
-}
 
 function showConfetti() {
   const container = document.getElementById('confetti');
@@ -345,17 +319,26 @@ function renderTVHorseRacing(state) {
     CasinoAudio.speak(state.speak);
   }
 
-  // Reset phase tracking on new race
-  if (state.phase === 'betting' && lastRacePhase !== 'betting') {
-    lastRacePhase = 'betting';
-    lastSpokenText = null;
-    // Dispose old 3D scene for fresh start
-    if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
-      Race3D.stopRendering();
-      Race3D.dispose();
+  // Phase transitions
+  if (state.phase !== lastRacePhase) {
+    // Entering betting: dispose any previous scene and clear the panel
+    if (state.phase === 'betting') {
+      lastSpokenText = null;
+      if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
+        Race3D.stopRendering();
+        Race3D.dispose();
+      }
+      el.innerHTML = '';
     }
-    // Force rebuild of betting HTML on new race
-    el.innerHTML = '';
+    // Leaving betting: dispose the preview scene before the track scene takes over
+    if (lastRacePhase === 'betting' && state.phase !== 'betting') {
+      if (typeof Race3D !== 'undefined' && Race3D.isInitialized()) {
+        Race3D.stopRendering();
+        Race3D.dispose();
+      }
+      el.innerHTML = ''; // clear betting HTML so track HTML rebuilds cleanly
+    }
+    lastRacePhase = state.phase;
   }
 
   // ── Sky Racing split-screen betting board ──

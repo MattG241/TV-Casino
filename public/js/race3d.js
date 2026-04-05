@@ -603,9 +603,7 @@ const Race3D = (() => {
       ctx.beginPath();
       ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
       ctx.clip();
-      // Mirror the selfie (front camera is mirrored)
-      ctx.scale(-1, 1);
-      ctx.drawImage(img, -size, 0, size, size);
+      ctx.drawImage(img, 0, 0, size, size);
       ctx.restore();
       faceTex.needsUpdate = true;
     };

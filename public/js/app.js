@@ -148,13 +148,19 @@ function initSelfieCamera() {
     showToast('Camera not available — skip photo');
     return;
   }
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 240, height: 240 }, audio: false })
+  // Use ideal constraints — iOS Safari rejects exact width/height values
+  const constraints = { video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 320 } }, audio: false };
+  navigator.mediaDevices.getUserMedia(constraints)
+    .catch(() => navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false }))
+    .catch(() => navigator.mediaDevices.getUserMedia({ video: true, audio: false }))
     .then(stream => {
       selfieStream = stream;
       video.srcObject = stream;
+      // iOS Safari requires explicit play() after setting srcObject
+      video.play().catch(() => {});
     })
     .catch(() => {
-      showToast('Camera permission denied — skip photo');
+      showToast('Camera unavailable — tap Skip photo');
     });
 }
 
@@ -172,13 +178,20 @@ function captureSelfie() {
   const snapBtn = document.getElementById('selfieSnapBtn');
   const retakeBtn = document.getElementById('selfieRetakeBtn');
 
-  const size = 240;
+  // If video not ready yet, try again shortly
+  if (!video.videoWidth || video.readyState < 2) {
+    snapBtn.textContent = '⏳';
+    setTimeout(() => { snapBtn.textContent = '📸 TAKE PHOTO'; captureSelfie(); }, 400);
+    return;
+  }
+
+  const size = 320;
   canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext('2d');
 
-  // Draw video frame, cropped square, then clip to circle
-  const vw = video.videoWidth || size;
-  const vh = video.videoHeight || size;
+  // Draw video frame, center-cropped square, clipped to circle
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
   const side = Math.min(vw, vh);
   const sx = (vw - side) / 2;
   const sy = (vh - side) / 2;
@@ -187,10 +200,13 @@ function captureSelfie() {
   ctx.beginPath();
   ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
   ctx.clip();
+  // Mirror horizontally so it looks natural (front-cam is mirrored)
+  ctx.translate(size, 0);
+  ctx.scale(-1, 1);
   ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
   ctx.restore();
 
-  mySelfie = canvas.toDataURL('image/jpeg', 0.65);
+  mySelfie = canvas.toDataURL('image/jpeg', 0.7);
 
   // Show preview
   img.src = mySelfie;
