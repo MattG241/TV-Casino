@@ -273,89 +273,126 @@ const Race3D = (() => {
     });
   }
 
-  // Create a jockey mesh (GLB or fallback) with optional selfie face
+  // Create a jockey riding on the horse
+  // Humanoid.glb: single mesh, Y 0-20.7 units, X ±5.8, Z ±1.9
   function createJockey(silkColor, selfieUrl) {
     const group = new THREE.Group();
     const col = new THREE.Color(silkColor);
 
     if (jockeyReady && jockeyTemplate) {
-      const model = jockeyTemplate.clone();
-      // Scale the humanoid to sit on the horse (~0.8 units tall sitting)
-      model.scale.set(0.012, 0.012, 0.012);
-      model.rotation.y = Math.PI / 2; // face forward
-
-      // Create selfie face texture if available
-      let faceTex = null;
-      if (selfieUrl) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.src = selfieUrl;
-        faceTex = new THREE.Texture(img);
-        img.onload = () => { faceTex.needsUpdate = true; };
-      }
-
-      // Apply silk colors and selfie to the model
-      let headMesh = null;
-      model.traverse((child) => {
+      // Clone the scene properly — deep clone all meshes
+      const model = new THREE.Group();
+      jockeyTemplate.traverse((child) => {
         if (child.isMesh) {
-          child.material = new THREE.MeshLambertMaterial({ color: col.clone() });
-          child.castShadow = true;
-
-          // Try to identify the head mesh (usually highest positioned or named 'head')
-          const box = new THREE.Box3().setFromObject(child);
-          if (!headMesh || box.max.y > new THREE.Box3().setFromObject(headMesh).max.y) {
-            headMesh = child;
-          }
+          const clonedGeo = child.geometry.clone();
+          const mat = new THREE.MeshLambertMaterial({ color: col.clone() });
+          mat.side = THREE.DoubleSide;
+          const mesh = new THREE.Mesh(clonedGeo, mat);
+          mesh.castShadow = true;
+          mesh.position.copy(child.position);
+          mesh.rotation.copy(child.rotation);
+          mesh.scale.copy(child.scale);
+          model.add(mesh);
         }
       });
 
-      // Apply selfie texture to the head mesh
-      if (headMesh && faceTex) {
-        headMesh.material = new THREE.MeshBasicMaterial({ map: faceTex });
-      } else if (headMesh) {
-        // Skin color for head
-        headMesh.material = new THREE.MeshLambertMaterial({ color: 0xf5c9a0 });
-      }
-
+      // Model is ~20.7 units tall. Scale so jockey is ~1.0 unit tall (crouched riding)
+      model.scale.set(0.048, 0.048, 0.048);
+      // Rotate to face horse's forward direction (+X in our track system)
+      model.rotation.y = Math.PI / 2;
       group.add(model);
-    } else {
-      // Fallback: simple jockey shapes
-      const jCol = col.clone().offsetHSL(0.15, 0.2, 0.1);
-      const jBody = new THREE.Mesh(
-        new THREE.SphereGeometry(0.2, 8, 6),
-        new THREE.MeshLambertMaterial({ color: jCol })
-      );
-      jBody.scale.set(0.8, 1.2, 0.7);
-      jBody.position.set(0, 0.7, 0);
-      group.add(jBody);
 
-      // Head with selfie texture or skin color
-      let headMat;
+      // Selfie face sprite near head position (head top is ~20.7 * 0.048 = ~1.0 above group origin)
       if (selfieUrl) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.src = selfieUrl;
-        const tex = new THREE.Texture(img);
-        img.onload = () => { tex.needsUpdate = true; };
-        headMat = new THREE.MeshBasicMaterial({ map: tex });
-      } else {
-        headMat = new THREE.MeshLambertMaterial({ color: 0xf5c9a0 });
+        const faceSprite = _makeFaceSprite(selfieUrl, 0.35);
+        faceSprite.position.set(0.05, 1.05, 0);
+        group.add(faceSprite);
       }
-      const jHead = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), headMat);
-      jHead.position.set(0.05, 1.0, 0);
-      group.add(jHead);
+    } else {
+      // Fallback: geometric jockey
+      const silkMat = new THREE.MeshLambertMaterial({ color: col });
+      const skinMat = new THREE.MeshLambertMaterial({ color: 0xdeb38a });
+
+      // Torso (leaning forward in riding crouch)
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.45, 8), silkMat);
+      torso.position.set(0, 0.5, 0);
+      torso.rotation.z = 0.3; // lean forward
+      torso.castShadow = true;
+      group.add(torso);
+
+      // Arms
+      [-0.18, 0.18].forEach(z => {
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.35, 6), silkMat);
+        arm.position.set(0.18, 0.55, z);
+        arm.rotation.z = 0.8;
+        group.add(arm);
+      });
+
+      // Head
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), skinMat);
+      head.position.set(0.05, 0.82, 0);
+      head.castShadow = true;
+      group.add(head);
 
       // Helmet
-      const helmet = new THREE.Mesh(
-        new THREE.SphereGeometry(0.15, 8, 8),
-        new THREE.MeshLambertMaterial({ color: jCol })
-      );
-      helmet.scale.set(1, 0.6, 1);
-      helmet.position.set(0.02, 1.12, 0);
+      const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), silkMat);
+      helmet.scale.set(1, 0.7, 1);
+      helmet.position.set(0.04, 0.87, 0);
       group.add(helmet);
+
+      // Legs (bent for riding)
+      [-0.12, 0.12].forEach(z => {
+        const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.3, 6), new THREE.MeshLambertMaterial({ color: 0xeeeeee }));
+        thigh.position.set(-0.08, 0.22, z);
+        thigh.rotation.z = -0.5;
+        group.add(thigh);
+        const boot = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.25, 6), new THREE.MeshLambertMaterial({ color: 0x222222 }));
+        boot.position.set(-0.02, 0.02, z);
+        group.add(boot);
+      });
+
+      // Selfie face sprite
+      if (selfieUrl) {
+        const faceSprite = _makeFaceSprite(selfieUrl, 0.28);
+        faceSprite.position.set(0.12, 0.82, 0);
+        group.add(faceSprite);
+      }
     }
 
     return group;
+  }
+
+  // Make a billboard sprite from a selfie data URL
+  function _makeFaceSprite(selfieUrl, size) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const tex = new THREE.CanvasTexture(canvas);
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = selfieUrl;
+    img.onload = () => {
+      ctx.clearRect(0, 0, 64, 64);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(32, 32, 30, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(img, 0, 0, 64, 64);
+      ctx.restore();
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(32, 32, 30, 0, Math.PI * 2);
+      ctx.stroke();
+      tex.needsUpdate = true;
+    };
+
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })
+    );
+    sprite.scale.set(size, size, 1);
+    return sprite;
   }
 
   async function init(containerEl) {
@@ -493,9 +530,9 @@ const Race3D = (() => {
     // Init dust particles
     initDust();
 
-    // Load GLB models async — will upgrade horses once ready
-    loadHorseModel();
-    loadJockeyModel();
+    // Load GLB models async — rebuild horses when models arrive
+    loadHorseModel().then((ok) => { if (ok) _rebuildHorses(); });
+    loadJockeyModel().then((ok) => { if (ok) _rebuildHorses(); });
   }
 
   function addRail(laneOffset) {
@@ -551,10 +588,9 @@ const Race3D = (() => {
       group.add(model);
       group._model = model;
 
-      // Mount jockey on GLB horse
+      // Mount jockey on GLB horse back (horse Y~120 model units * 0.02 scale = Y~2.4)
       const jockey = createJockey(color, selfieUrl);
-      jockey.position.set(-1, 3.5, 0); // riding position on GLB horse
-      jockey.scale.set(1.2, 1.2, 1.2);
+      jockey.position.set(0, 2.3, 0);
       group.add(jockey);
       group._jockey = jockey;
 
@@ -635,9 +671,9 @@ const Race3D = (() => {
         legs.push(legG);
       });
 
-      // Jockey (mounted on horse)
+      // Jockey (mounted on fallback horse — torso top is at Y~2.35)
       const jockey = createJockey(color, selfieUrl);
-      jockey.position.set(-0.1, 1.65, 0); // sit on horse's back
+      jockey.position.set(-0.1, 1.6, 0);
       group.add(jockey);
       group._jockey = jockey;
 
@@ -786,6 +822,18 @@ const Race3D = (() => {
       h3d._prevRotY += diff * 0.15;
       h3d.rotation.y = h3d._prevRotY;
     }
+  }
+
+  // Rebuild all horses when a model finishes loading (upgrades fallback → GLB)
+  function _rebuildHorses() {
+    if (!scene || lastHorsesData.length === 0) return;
+    // Remove existing
+    horses3d.forEach(h => scene.remove(h));
+    horses3d = [];
+    // Recreate with new model
+    lastHorsesData.forEach((hd, i) => {
+      horses3d.push(createHorse(hd.color, i, lastHorsesData.length, hd));
+    });
   }
 
   // Backed horse IDs (horses players have bet on) — set by TV renderer
