@@ -13,9 +13,7 @@ const Race3D = (() => {
   let horseAnimClip = null;
   let modelReady = false;
 
-  // Loaded jockey template
-  let jockeyTemplate = null;
-  let jockeyReady = false;
+  // No jockey GLB — we build articulated jockeys from geometry so they can animate
 
   // Cache latest state so the render loop can drive parade animation
   let lastHorsesData = [];
@@ -257,119 +255,173 @@ const Race3D = (() => {
     });
   }
 
-  function loadJockeyModel() {
-    return new Promise((resolve) => {
-      if (typeof THREE.GLTFLoader === 'undefined') { resolve(false); return; }
-      const loader = new THREE.GLTFLoader();
-      loader.load('/models/Humanoid.glb', (gltf) => {
-        jockeyTemplate = gltf.scene;
-        jockeyReady = true;
-        console.log('[Race3D] Jockey model loaded');
-        resolve(true);
-      }, undefined, (err) => {
-        console.warn('Jockey model load failed:', err);
-        resolve(false);
-      });
-    });
-  }
-
-  // Create a jockey riding on the horse
-  // Humanoid.glb: single mesh, Y 0-20.7 units, X ±5.8, Z ±1.9
+  // Build an articulated jockey with jointed limbs that can animate
   function createJockey(silkColor, selfieUrl) {
     const group = new THREE.Group();
     const col = new THREE.Color(silkColor);
+    const silkMat = new THREE.MeshLambertMaterial({ color: col });
+    const silkDark = new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.7) });
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0xdeb38a });
+    const whiteMat = new THREE.MeshLambertMaterial({ color: 0xf0f0f0 });
+    const bootMat = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
 
-    if (jockeyReady && jockeyTemplate) {
-      // Clone all meshes from the template
-      const model = new THREE.Group();
-      jockeyTemplate.traverse((child) => {
-        if (child.isMesh) {
-          const mesh = new THREE.Mesh(child.geometry.clone(),
-            new THREE.MeshLambertMaterial({ color: col.clone(), side: THREE.DoubleSide }));
-          mesh.castShadow = true;
-          mesh.position.copy(child.position);
-          mesh.rotation.copy(child.rotation);
-          mesh.scale.copy(child.scale);
-          model.add(mesh);
-        }
-      });
+    // ── HIPS (pivot point — everything attaches here) ──
+    const hips = new THREE.Group();
+    hips.position.set(0, 0, 0);
+    group.add(hips);
 
-      // Model is ~20.7 units tall. Scale to ~1.8 units tall for visible jockey
-      model.scale.set(0.085, 0.085, 0.085);
-      // Face forward (+X on track) and lean forward like a real jockey
-      model.rotation.y = Math.PI / 2;
-      model.rotation.x = 0.35; // lean forward into riding crouch
-      // Shift model down so legs straddle the horse (model origin is at feet)
-      model.position.set(0.2, -0.3, 0);
-      group.add(model);
+    // ── TORSO (leans forward from hips) ──
+    const torsoPivot = new THREE.Group();
+    torsoPivot.position.set(0, 0.05, 0);
+    torsoPivot.rotation.z = 0.6; // lean forward
+    hips.add(torsoPivot);
 
-      // Selfie face sprite at head height
-      if (selfieUrl) {
-        const faceSprite = _makeFaceSprite(selfieUrl, 0.55);
-        faceSprite.position.set(0.4, 1.6, 0);
-        group.add(faceSprite);
-      }
-    } else {
-      // Fallback: geometric jockey — built to be visible at race camera distance
-      const silkMat = new THREE.MeshLambertMaterial({ color: col });
-      const skinMat = new THREE.MeshLambertMaterial({ color: 0xdeb38a });
-      const whiteMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee });
-      const bootMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.18, 0.55, 8), silkMat);
+    torso.position.set(0, 0.3, 0);
+    torso.castShadow = true;
+    torsoPivot.add(torso);
 
-      // Torso — big enough to see, leaning forward
-      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.65, 8), silkMat);
-      torso.position.set(0.1, 0.7, 0);
-      torso.rotation.z = 0.4;
-      torso.castShadow = true;
-      group.add(torso);
+    // Shoulders
+    const shoulders = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), silkMat);
+    shoulders.scale.set(1, 0.5, 1.4);
+    shoulders.position.set(0, 0.55, 0);
+    torsoPivot.add(shoulders);
 
-      // Arms reaching forward for reins
-      [-0.22, 0.22].forEach(z => {
-        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.5, 6), silkMat);
-        arm.position.set(0.4, 0.75, z);
-        arm.rotation.z = 1.0;
-        arm.castShadow = true;
-        group.add(arm);
-      });
+    // ── NECK + HEAD ──
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.12, 6), skinMat);
+    neck.position.set(0, 0.65, 0);
+    torsoPivot.add(neck);
 
-      // Head
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), skinMat);
-      head.position.set(0.2, 1.15, 0);
-      head.castShadow = true;
-      group.add(head);
+    const headPivot = new THREE.Group();
+    headPivot.position.set(0, 0.75, 0);
+    torsoPivot.add(headPivot);
 
-      // Helmet
-      const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.155, 8, 6), silkMat);
-      helmet.scale.set(1, 0.7, 1);
-      helmet.position.set(0.18, 1.22, 0);
-      group.add(helmet);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), skinMat);
+    head.castShadow = true;
+    headPivot.add(head);
 
-      // Thighs — bent, gripping horse
-      [-0.16, 0.16].forEach(z => {
-        const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.4, 6), whiteMat);
-        thigh.position.set(-0.05, 0.3, z);
-        thigh.rotation.z = -0.6;
-        thigh.castShadow = true;
-        group.add(thigh);
-      });
+    // Helmet
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), silkMat);
+    helmet.scale.set(1.05, 0.75, 1.05);
+    helmet.position.set(0, 0.04, 0);
+    headPivot.add(helmet);
 
-      // Boots — hanging down the horse's sides
-      [-0.18, 0.18].forEach(z => {
-        const boot = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.35, 6), bootMat);
-        boot.position.set(-0.15, 0.0, z);
-        boot.castShadow = true;
-        group.add(boot);
-      });
+    // Goggles
+    const goggles = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.14), silkDark);
+    goggles.position.set(0.08, -0.01, 0);
+    headPivot.add(goggles);
 
-      // Selfie face sprite
-      if (selfieUrl) {
-        const faceSprite = _makeFaceSprite(selfieUrl, 0.45);
-        faceSprite.position.set(0.3, 1.15, 0);
-        group.add(faceSprite);
-      }
+    // Selfie face sprite
+    if (selfieUrl) {
+      const faceSprite = _makeFaceSprite(selfieUrl, 0.4);
+      faceSprite.position.set(0.14, 0, 0);
+      headPivot.add(faceSprite);
     }
 
+    // ── ARMS (pivot at shoulders, reach forward for reins) ──
+    const arms = [];
+    [-0.2, 0.2].forEach((z, ai) => {
+      const armPivot = new THREE.Group();
+      armPivot.position.set(0, 0.5, z);
+      torsoPivot.add(armPivot);
+
+      // Upper arm
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.3, 6), silkMat);
+      upper.position.set(0, -0.1, 0);
+      upper.rotation.z = -0.3;
+      armPivot.add(upper);
+
+      // Forearm — reaching forward
+      const forearmPivot = new THREE.Group();
+      forearmPivot.position.set(0.08, -0.22, 0);
+      forearmPivot.rotation.z = -1.2;
+      armPivot.add(forearmPivot);
+
+      const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.28, 6), silkMat);
+      forearm.position.set(0, -0.14, 0);
+      forearmPivot.add(forearm);
+
+      // Hand/glove
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), whiteMat);
+      hand.position.set(0, -0.28, 0);
+      forearmPivot.add(hand);
+
+      arms.push({ pivot: armPivot, forearmPivot });
+    });
+
+    // ── LEGS (pivot at hips, bent for riding) ──
+    const legs = [];
+    [-0.14, 0.14].forEach((z, li) => {
+      const legPivot = new THREE.Group();
+      legPivot.position.set(-0.02, -0.05, z);
+      legPivot.rotation.z = -1.3; // thigh angled down and back
+      hips.add(legPivot);
+
+      // Thigh
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.35, 6), whiteMat);
+      thigh.position.set(0, -0.18, 0);
+      thigh.castShadow = true;
+      legPivot.add(thigh);
+
+      // Knee pivot
+      const kneePivot = new THREE.Group();
+      kneePivot.position.set(0, -0.35, 0);
+      kneePivot.rotation.z = 1.8; // shin angled forward (bent knee)
+      legPivot.add(kneePivot);
+
+      // Shin
+      const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.3, 6), whiteMat);
+      shin.position.set(0, -0.15, 0);
+      kneePivot.add(shin);
+
+      // Boot
+      const boot = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.12, 6), bootMat);
+      boot.position.set(0, -0.3, 0);
+      kneePivot.add(boot);
+
+      legs.push({ pivot: legPivot, kneePivot });
+    });
+
+    // Store refs for animation
+    group._jockeyParts = { hips, torsoPivot, headPivot, arms, legs };
+    group._jockeyPhase = Math.random() * Math.PI * 2;
+
     return group;
+  }
+
+  // Animate jockey — call each frame with gallop speed
+  function animateJockey(h3d, speed) {
+    const j = h3d._jockey;
+    if (!j || !j._jockeyParts) return;
+    const p = j._jockeyParts;
+
+    if (speed <= 0) return; // standing still
+
+    j._jockeyPhase += speed * 0.045;
+    const t = j._jockeyPhase;
+    const intensity = Math.min(1, speed / 6); // 0-1 based on gallop speed
+
+    // Body bounces up/down with gallop
+    p.hips.position.y = Math.sin(t * 2) * 0.06 * intensity;
+
+    // Torso rocks forward/back slightly
+    p.torsoPivot.rotation.z = 0.6 + Math.sin(t * 2) * 0.08 * intensity;
+
+    // Head bobs
+    p.headPivot.rotation.z = Math.sin(t * 2 + 0.5) * 0.05 * intensity;
+
+    // Arms pump with gallop (alternating)
+    p.arms.forEach((arm, i) => {
+      const off = i * Math.PI;
+      arm.forearmPivot.rotation.z = -1.2 + Math.sin(t + off) * 0.25 * intensity;
+    });
+
+    // Legs pump — jockey rises and sits in the saddle
+    p.legs.forEach((leg, i) => {
+      const off = i * Math.PI;
+      leg.pivot.rotation.z = -1.3 + Math.sin(t * 2 + off) * 0.12 * intensity;
+      leg.kneePivot.rotation.z = 1.8 + Math.sin(t * 2 + off + 0.5) * 0.15 * intensity;
+    });
   }
 
   // Make a billboard sprite from a selfie data URL
@@ -540,9 +592,8 @@ const Race3D = (() => {
     // Init dust particles
     initDust();
 
-    // Load GLB models async — rebuild horses when models arrive
+    // Load horse GLB model async — rebuild horses when it arrives
     loadHorseModel().then((ok) => { if (ok) _rebuildHorses(); });
-    loadJockeyModel().then((ok) => { if (ok) _rebuildHorses(); });
   }
 
   function addRail(laneOffset) {
@@ -598,9 +649,9 @@ const Race3D = (() => {
       group.add(model);
       group._model = model;
 
-      // Mount jockey on GLB horse back — horse ~3.6 units tall at 0.02 scale, back ~2.5
+      // Mount jockey on GLB horse back — horse ~3.6u tall at 0.02 scale, back ~2.4
       const jockey = createJockey(color, selfieUrl);
-      jockey.position.set(-0.3, 2.6, 0);
+      jockey.position.set(0, 2.4, 0);
       group.add(jockey);
       group._jockey = jockey;
 
@@ -681,9 +732,9 @@ const Race3D = (() => {
         legs.push(legG);
       });
 
-      // Jockey mounted on fallback horse — sits on torso
+      // Jockey mounted on fallback horse — sits on torso top
       const jockey = createJockey(color, selfieUrl);
-      jockey.position.set(-0.2, 1.55, 0);
+      jockey.position.set(0, 1.6, 0);
       group.add(jockey);
       group._jockey = jockey;
 
@@ -782,8 +833,11 @@ const Race3D = (() => {
     return group;
   }
 
-  // ── Set animation speed on a horse ─────────────────────────────────────
+  // ── Set animation speed on a horse + jockey ────────────────────────────
   function setAnimSpeed(h3d, speed) {
+    // Animate jockey
+    animateJockey(h3d, speed);
+
     if (h3d._action) {
       h3d._action.paused = speed === 0;
       h3d._action.timeScale = speed;
